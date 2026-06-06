@@ -9,12 +9,14 @@ namespace KataFlow.Engine.Gates;
 public class ManualApprovalGate : IApprovalGate
 {
     private readonly ILogger<ManualApprovalGate> _logger;
+    private readonly ApprovalFileSignal _fileSignal;
 
     public ApprovalMode Mode => ApprovalMode.Manual;
 
-    public ManualApprovalGate(ILogger<ManualApprovalGate> logger)
+    public ManualApprovalGate(ILogger<ManualApprovalGate> logger, ApprovalFileSignal fileSignal)
     {
         _logger = logger;
+        _fileSignal = fileSignal;
     }
 
     public async Task<ApprovalDecision> RequestApprovalAsync(StepResult result, CancellationToken ct = default)
@@ -23,28 +25,27 @@ public class ManualApprovalGate : IApprovalGate
             ? Path.GetDirectoryName(result.ArtifactPath) ?? ""
             : "";
 
-        var parentDir = Path.GetDirectoryName(sessionDir) ?? "";
-        var pendingFile = Path.Combine(parentDir, ".pending-approval");
-        var approvedFile = Path.Combine(parentDir, ".approved");
-        var rejectedFile = Path.Combine(parentDir, ".rejected");
-
-        if (File.Exists(approvedFile))
+        if (_fileSignal.HasApproval(sessionDir))
         {
-            File.Delete(approvedFile);
-            File.Delete(pendingFile);
+            _fileSignal.ClearApproval(sessionDir);
             return ApprovalDecision.Approve;
         }
 
-        if (File.Exists(rejectedFile))
+        if (_fileSignal.HasRejection(sessionDir))
         {
-            File.Delete(rejectedFile);
-            File.Delete(pendingFile);
+            _fileSignal.ClearRejection(sessionDir);
             return ApprovalDecision.Reject;
         }
 
-        if (result.ArtifactPath is not null)
-            File.WriteAllText(pendingFile, result.StepName);
+        if (!string.IsNullOrEmpty(sessionDir))
+            _fileSignal.WritePending(sessionDir, result.StepName);
 
+        var decision = await ShowApprovalPrompt(result);
+        return decision;
+    }
+
+    private static Task<ApprovalDecision> ShowApprovalPrompt(StepResult result)
+    {
         var previewText = "";
         if (result.ArtifactContent is not null)
         {
@@ -61,7 +62,6 @@ public class ManualApprovalGate : IApprovalGate
             Header = new PanelHeader("Approval Required"),
             Border = BoxBorder.Heavy,
         };
-
         AnsiConsole.Write(panel);
 
         var choice = AnsiConsole.Prompt(
@@ -71,7 +71,7 @@ public class ManualApprovalGate : IApprovalGate
                 .AddChoices("Approve and continue", "Reject and stop", "View full artifact"));
 
         if (choice == "Reject and stop")
-            return ApprovalDecision.Reject;
+            return Task.FromResult(ApprovalDecision.Reject);
 
         if (choice == "View full artifact" && result.ArtifactContent is not null)
         {
@@ -87,12 +87,10 @@ public class ManualApprovalGate : IApprovalGate
                     .PageSize(3)
                     .AddChoices("Approve and continue", "Reject and stop"));
 
-            return secondChoice == "Reject and stop" ? ApprovalDecision.Reject : ApprovalDecision.Approve;
+            return Task.FromResult(
+                secondChoice == "Reject and stop" ? ApprovalDecision.Reject : ApprovalDecision.Approve);
         }
 
-        if (File.Exists(pendingFile))
-            File.Delete(pendingFile);
-
-        return ApprovalDecision.Approve;
+        return Task.FromResult(ApprovalDecision.Approve);
     }
 }

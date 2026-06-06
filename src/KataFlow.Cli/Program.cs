@@ -48,6 +48,8 @@ static void ConfigureServices(IServiceCollection services)
     services.AddSingleton<IPromptRenderer, PromptRenderer>();
     services.AddSingleton<ContextBuilder>();
     services.AddSingleton<StepExecutor>();
+    services.AddSingleton<SessionManager>();
+    services.AddSingleton<ApprovalFileSignal>();
 
     services.AddSingleton<PresetWorkflowRegistry>();
     services.AddSingleton<IWorkflowLoader>(sp =>
