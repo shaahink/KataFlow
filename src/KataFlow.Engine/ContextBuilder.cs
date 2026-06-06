@@ -13,7 +13,7 @@ public class ContextBuilder
         _fileSystem = fileSystem;
     }
 
-    public IReadOnlyDictionary<string, string> Build(Session session, StepDefinition step)
+    public virtual IReadOnlyDictionary<string, string> Build(Session session, StepDefinition step)
     {
         var vars = new Dictionary<string, string>();
 

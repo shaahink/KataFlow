@@ -26,7 +26,7 @@ public class StepExecutor
         _logger = logger;
     }
 
-    public async Task<StepResult> ExecuteAsync(
+    public virtual async Task<StepResult> ExecuteAsync(
         Session session,
         StepDefinition step,
         Func<AgentType, IAgentAdapter> adapterResolver,
