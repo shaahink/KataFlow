@@ -4,9 +4,16 @@ using Spectre.Console;
 
 namespace KataFlow.Cli.Commands;
 
-public static class StatusCommand
+public class StatusCommand
 {
-    public static Command Create()
+    private readonly ISessionStore _store;
+
+    public StatusCommand(ISessionStore store)
+    {
+        _store = store;
+    }
+
+    public Command Create()
     {
         var command = new Command("status", "Show session status");
 
@@ -19,11 +26,10 @@ public static class StatusCommand
         command.SetAction(async (ParseResult parseResult) =>
         {
             var sessionId = parseResult.GetValue(sessionOption);
-            var store = ServiceProviderInstance.GetService<ISessionStore>();
 
             if (!string.IsNullOrEmpty(sessionId))
             {
-                var session = await store.GetAsync(sessionId);
+                var session = await _store.GetAsync(sessionId);
                 if (session is null)
                 {
                     Console.Error.WriteLine($"Session not found: {sessionId}");
@@ -56,7 +62,7 @@ public static class StatusCommand
             }
             else
             {
-                var sessions = await store.ListAsync();
+                var sessions = await _store.ListAsync();
                 if (sessions.Count == 0)
                 {
                     Console.WriteLine("No sessions found.");

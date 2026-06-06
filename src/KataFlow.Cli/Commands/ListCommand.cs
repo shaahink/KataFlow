@@ -4,9 +4,18 @@ using Spectre.Console;
 
 namespace KataFlow.Cli.Commands;
 
-public static class ListCommand
+public class ListCommand
 {
-    public static Command Create()
+    private readonly IWorkflowLoader _loader;
+    private readonly ISessionStore _store;
+
+    public ListCommand(IWorkflowLoader loader, ISessionStore store)
+    {
+        _loader = loader;
+        _store = store;
+    }
+
+    public Command Create()
     {
         var command = new Command("list", "List available workflows or sessions");
 
@@ -23,8 +32,7 @@ public static class ListCommand
             switch (target.ToLowerInvariant())
             {
                 case "workflows":
-                    var loader = ServiceProviderInstance.GetService<IWorkflowLoader>();
-                    var available = loader.ListAvailable();
+                    var available = _loader.ListAvailable();
                     if (available.Count == 0)
                     {
                         Console.WriteLine("No workflows available.");
@@ -38,8 +46,7 @@ public static class ListCommand
                     break;
 
                 case "sessions":
-                    var store = ServiceProviderInstance.GetService<ISessionStore>();
-                    var sessions = await store.ListAsync();
+                    var sessions = await _store.ListAsync();
                     if (sessions.Count == 0)
                     {
                         Console.WriteLine("No sessions found.");

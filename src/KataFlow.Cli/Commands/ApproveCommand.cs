@@ -2,9 +2,9 @@ using System.CommandLine;
 
 namespace KataFlow.Cli.Commands;
 
-public static class ApproveCommand
+public class ApproveCommand
 {
-    public static Command Create()
+    public Command Create()
     {
         var command = new Command("approve", "Approve or reject a paused session");
 

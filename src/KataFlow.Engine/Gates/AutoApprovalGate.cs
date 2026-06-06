@@ -9,6 +9,8 @@ public class AutoApprovalGate : IApprovalGate
 {
     private readonly ILogger<AutoApprovalGate> _logger;
 
+    public ApprovalMode Mode => ApprovalMode.Auto;
+
     public AutoApprovalGate(ILogger<AutoApprovalGate> logger)
     {
         _logger = logger;
@@ -16,8 +18,7 @@ public class AutoApprovalGate : IApprovalGate
 
     public Task<ApprovalDecision> RequestApprovalAsync(StepResult result, CancellationToken ct = default)
     {
-        _logger.LogInformation("AUTO-APPROVED step:{Step} session:{SessionId}",
-            result.StepName, result.GetType().GetProperty("SessionId")?.GetValue(result));
+        _logger.LogInformation("AUTO-APPROVED step:{Step}", result.StepName);
         return Task.FromResult(ApprovalDecision.Approve);
     }
 }

@@ -1,7 +1,6 @@
 using KataFlow.Core.Enums;
 using KataFlow.Core.Interfaces;
 using KataFlow.Core.Models;
-using KataFlow.Engine.Gates;
 using Microsoft.Extensions.Logging;
 
 namespace KataFlow.Engine;
@@ -10,25 +9,22 @@ public class WorkflowRunner : IWorkflowRunner
 {
     private readonly ISessionStore _sessionStore;
     private readonly StepExecutor _stepExecutor;
-    private readonly AutoApprovalGate _autoGate;
-    private readonly ManualApprovalGate _manualGate;
     private readonly ILogger<WorkflowRunner> _logger;
     private readonly Func<AgentType, IAgentAdapter> _adapterResolver;
+    private readonly IReadOnlyDictionary<ApprovalMode, IApprovalGate> _gates;
 
     public WorkflowRunner(
         ISessionStore sessionStore,
         StepExecutor stepExecutor,
-        AutoApprovalGate autoGate,
-        ManualApprovalGate manualGate,
         ILogger<WorkflowRunner> logger,
-        Func<AgentType, IAgentAdapter> adapterResolver)
+        Func<AgentType, IAgentAdapter> adapterResolver,
+        IEnumerable<IApprovalGate> gates)
     {
         _sessionStore = sessionStore;
         _stepExecutor = stepExecutor;
-        _autoGate = autoGate;
-        _manualGate = manualGate;
         _logger = logger;
         _adapterResolver = adapterResolver;
+        _gates = gates.ToDictionary(g => g.Mode);
     }
 
     public async Task<SessionResult> RunAsync(
@@ -75,9 +71,12 @@ public class WorkflowRunner : IWorkflowRunner
                 };
             }
 
-            IApprovalGate gate = step.Approval == ApprovalMode.Auto || ctx.AutoApprove
-                ? _autoGate
-                : _manualGate;
+            var gateMode = ctx.AutoApprove ? ApprovalMode.Auto : step.Approval;
+            if (!_gates.TryGetValue(gateMode, out var gate))
+            {
+                _logger.LogError("No approval gate registered for mode {Mode}", gateMode);
+                return new SessionResult { SessionId = session.Id, Success = false, ErrorMessage = $"No gate for {gateMode}" };
+            }
 
             var decision = await gate.RequestApprovalAsync(stepResult, ct);
 

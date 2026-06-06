@@ -10,6 +10,8 @@ public class ManualApprovalGate : IApprovalGate
 {
     private readonly ILogger<ManualApprovalGate> _logger;
 
+    public ApprovalMode Mode => ApprovalMode.Manual;
+
     public ManualApprovalGate(ILogger<ManualApprovalGate> logger)
     {
         _logger = logger;

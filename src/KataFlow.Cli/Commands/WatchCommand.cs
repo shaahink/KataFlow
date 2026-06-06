@@ -2,9 +2,9 @@ using System.CommandLine;
 
 namespace KataFlow.Cli.Commands;
 
-public static class WatchCommand
+public class WatchCommand
 {
-    public static Command Create()
+    public Command Create()
     {
         var command = new Command("watch", "Tail orchestration log for a running session");
 

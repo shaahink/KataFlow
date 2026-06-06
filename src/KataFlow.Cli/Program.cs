@@ -1,7 +1,5 @@
 ﻿using System.CommandLine;
-using System.CommandLine.Parsing;
 using KataFlow.Adapters.Claude;
-using Microsoft.Extensions.Configuration;
 using KataFlow.Adapters.FileDrop;
 using KataFlow.Adapters.Rest;
 using KataFlow.Cli.Commands;
@@ -12,6 +10,7 @@ using KataFlow.Engine.Gates;
 using KataFlow.Engine.Loaders;
 using KataFlow.Infrastructure;
 using KataFlow.Infrastructure.Logging;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -33,14 +32,13 @@ builder.Logging.ClearProviders();
 builder.Logging.AddSerilog(KataFlowLogger.CreateLogger(), dispose: true);
 
 var app = builder.Build();
-ServiceProviderInstance.ServiceProvider = app.Services;
 
 var rootCommand = new RootCommand("KataFlow — multi-agent AI workflow orchestrator");
-rootCommand.Add(RunCommand.Create());
-rootCommand.Add(ApproveCommand.Create());
-rootCommand.Add(StatusCommand.Create());
-rootCommand.Add(ListCommand.Create());
-rootCommand.Add(WatchCommand.Create());
+rootCommand.Add(app.Services.GetRequiredService<RunCommand>().Create());
+rootCommand.Add(new ApproveCommand().Create());
+rootCommand.Add(app.Services.GetRequiredService<StatusCommand>().Create());
+rootCommand.Add(app.Services.GetRequiredService<ListCommand>().Create());
+rootCommand.Add(new WatchCommand().Create());
 
 var parseResult = rootCommand.Parse(args);
 return await parseResult.InvokeAsync(parseResult.InvocationConfiguration);
@@ -50,71 +48,91 @@ static void ConfigureServices(IServiceCollection services)
     services.AddSingleton<IPromptRenderer, PromptRenderer>();
     services.AddSingleton<ContextBuilder>();
     services.AddSingleton<StepExecutor>();
+
     services.AddSingleton<PresetWorkflowRegistry>();
     services.AddSingleton<IWorkflowLoader>(sp =>
     {
-        var presets = sp.GetRequiredService<PresetWorkflowRegistry>();
-        var config = sp.GetRequiredService<Microsoft.Extensions.Configuration.IConfiguration>();
-        return new CompositeWorkflowLoader(presets, new YamlWorkflowLoader(
-            config.GetSection("KataFlow:WorkflowsPath").Value ?? "./workflows"));
+        var config = sp.GetRequiredService<IConfiguration>();
+        var loaders = new List<IWorkflowLoader>
+        {
+            sp.GetRequiredService<PresetWorkflowRegistry>(),
+            new YamlWorkflowLoader(config.GetSection("KataFlow:WorkflowsPath").Value ?? "./workflows"),
+        };
+        return new CompositeWorkflowLoader(loaders);
     });
+
     services.AddSingleton<ISessionStore>(sp =>
     {
-        var config = sp.GetRequiredService<Microsoft.Extensions.Configuration.IConfiguration>();
+        var config = sp.GetRequiredService<IConfiguration>();
         return new SessionStore(config.GetSection("KataFlow:SessionsPath").Value ?? "./sessions");
     });
     services.AddSingleton<IArtifactStore>(sp =>
     {
-        var config = sp.GetRequiredService<Microsoft.Extensions.Configuration.IConfiguration>();
+        var config = sp.GetRequiredService<IConfiguration>();
         return new ArtifactStore(config.GetSection("KataFlow:SessionsPath").Value ?? "./sessions");
     });
-    services.AddSingleton<AutoApprovalGate>();
-    services.AddSingleton<ManualApprovalGate>();
+
+    services.AddSingleton<IApprovalGate, AutoApprovalGate>();
+    services.AddSingleton<IApprovalGate, ManualApprovalGate>();
+
     services.AddSingleton<FileWatcher>();
+
     services.AddSingleton<FileDropChannel>(sp =>
     {
-        var config = sp.GetRequiredService<Microsoft.Extensions.Configuration.IConfiguration>();
+        var config = sp.GetRequiredService<IConfiguration>();
         return new FileDropChannel(
             sp.GetRequiredService<ILogger<FileDropChannel>>(),
             sp.GetRequiredService<FileWatcher>(),
             sp.GetRequiredService<IPromptRenderer>(),
             config.GetSection("KataFlow:TemplatesPath").Value ?? "./templates",
-            config.GetValue<int>("Agents:Rest:FileDrop:WatchTimeoutMinutes", 15),
-            config.GetValue<int>("Agents:Rest:FileDrop:PollIntervalMs", 500));
+            15, 500);
     });
-    services.AddSingleton<ClaudeApiChannel>(sp =>
+
+    services.AddOptions<ClaudeOptions>()
+        .BindConfiguration("Agents:Claude")
+        .PostConfigure(o =>
+        {
+            o.ApiKey = Environment.GetEnvironmentVariable("ANTHROPIC_API_KEY") ?? o.ApiKey;
+        });
+    services.AddHttpClient<ClaudeApiChannel>(client =>
     {
-        var config = sp.GetRequiredService<Microsoft.Extensions.Configuration.IConfiguration>();
-        return new ClaudeApiChannel(
-            sp.GetRequiredService<ILogger<ClaudeApiChannel>>(),
-            Environment.GetEnvironmentVariable("ANTHROPIC_API_KEY") ?? config.GetSection("Agents:Claude:ApiKey").Value ?? "",
-            config.GetSection("Agents:Claude:Model").Value ?? "claude-sonnet-4-6",
-            config.GetValue<int>("Agents:Claude:MaxTokens", 16384));
+        client.BaseAddress = new Uri("https://api.anthropic.com");
     });
-    services.AddSingleton<ClaudeAdapter>();
-    services.AddSingleton<RestApiChannel>(sp =>
+    services.AddSingleton<IAgentAdapter>(sp =>
     {
-        var config = sp.GetRequiredService<Microsoft.Extensions.Configuration.IConfiguration>();
-        return new RestApiChannel(
-            sp.GetRequiredService<ILogger<RestApiChannel>>(),
-            new HttpClient(),
-            config.GetSection("Agents:Rest:BaseUrl").Value ?? "https://api.deepseek.com",
-            Environment.GetEnvironmentVariable("DEEPSEEK_API_KEY") ?? config.GetSection("Agents:Rest:ApiKey").Value ?? "",
-            config.GetSection("Agents:Rest:Model").Value ?? "deepseek-chat",
-            config.GetValue<int>("Agents:Rest:MaxTokens", 16384));
+        var channels = new List<IAgentChannel>
+        {
+            sp.GetRequiredService<FileDropChannel>(),
+            sp.GetRequiredService<ClaudeApiChannel>(),
+        };
+        return new ClaudeAdapter(channels);
     });
-    services.AddSingleton<RestAdapter>();
+
+    services.AddOptions<RestOptions>()
+        .BindConfiguration("Agents:Rest")
+        .PostConfigure(o =>
+        {
+            o.ApiKey = Environment.GetEnvironmentVariable("DEEPSEEK_API_KEY") ?? o.ApiKey;
+        });
+    services.AddHttpClient<RestApiChannel>();
+    services.AddSingleton<IAgentAdapter>(sp =>
+    {
+        var channels = new List<IAgentChannel>
+        {
+            sp.GetRequiredService<RestApiChannel>(),
+        };
+        return new RestAdapter(channels);
+    });
+
     services.AddSingleton<Func<AgentType, IAgentAdapter>>(sp => agentType => agentType switch
     {
-        AgentType.Claude => sp.GetRequiredService<ClaudeAdapter>(),
-        AgentType.Rest => sp.GetRequiredService<RestAdapter>(),
+        AgentType.Claude => sp.GetServices<IAgentAdapter>().First(a => a is ClaudeAdapter),
+        AgentType.Rest => sp.GetServices<IAgentAdapter>().First(a => a is RestAdapter),
         _ => throw new InvalidOperationException($"Unknown agent type: {agentType}")
     });
     services.AddSingleton<IWorkflowRunner, WorkflowRunner>();
-}
 
-public static class ServiceProviderInstance
-{
-    public static IServiceProvider ServiceProvider { get; set; } = null!;
-    public static T GetService<T>() where T : notnull => ServiceProvider.GetRequiredService<T>();
+    services.AddTransient<RunCommand>();
+    services.AddTransient<StatusCommand>();
+    services.AddTransient<ListCommand>();
 }

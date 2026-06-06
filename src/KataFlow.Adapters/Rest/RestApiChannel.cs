@@ -1,4 +1,3 @@
-using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -6,6 +5,7 @@ using KataFlow.Core.Enums;
 using KataFlow.Core.Interfaces;
 using KataFlow.Core.Models;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace KataFlow.Adapters.Rest;
 
@@ -13,48 +13,35 @@ public class RestApiChannel : IAgentChannel
 {
     private readonly ILogger<RestApiChannel> _logger;
     private readonly HttpClient _httpClient;
-    private readonly string _baseUrl;
-    private readonly string _model;
-    private readonly int _maxTokens;
+    private readonly RestOptions _options;
 
     public ChannelType Type => ChannelType.ApiDirect;
 
     public RestApiChannel(
         ILogger<RestApiChannel> logger,
         HttpClient httpClient,
-        string baseUrl,
-        string? apiKey,
-        string model = "deepseek-chat",
-        int maxTokens = 16384)
+        IOptions<RestOptions> options)
     {
         _logger = logger;
         _httpClient = httpClient;
-        _baseUrl = baseUrl.TrimEnd('/');
-        _model = model;
-        _maxTokens = maxTokens;
-
-        if (!string.IsNullOrEmpty(apiKey))
-        {
-            _httpClient.DefaultRequestHeaders.Authorization =
-                new AuthenticationHeaderValue("Bearer", apiKey);
-        }
+        _options = options.Value;
     }
 
     public async Task<AgentResponse> SendAsync(AgentRequest request, CancellationToken ct = default)
     {
         try
         {
-            var stepModel = request.Metadata.TryGetValue("model", out var m) ? m : _model;
+            var stepModel = request.Metadata.TryGetValue("model", out var m) ? m : _options.Model;
 
             var body = new ChatCompletionRequest
             {
                 Model = stepModel,
                 Messages = [new ChatMessage { Role = "user", Content = request.RenderedPrompt }],
-                MaxTokens = _maxTokens,
+                MaxTokens = _options.MaxTokens,
             };
 
             var response = await _httpClient.PostAsJsonAsync(
-                $"{_baseUrl}/v1/chat/completions",
+                $"{_options.BaseUrl}/v1/chat/completions",
                 body,
                 JsonOptions.Default,
                 ct);

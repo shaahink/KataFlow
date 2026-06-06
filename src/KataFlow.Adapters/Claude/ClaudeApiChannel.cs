@@ -1,10 +1,10 @@
-using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json.Serialization;
 using KataFlow.Core.Enums;
 using KataFlow.Core.Interfaces;
 using KataFlow.Core.Models;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace KataFlow.Adapters.Claude;
 
@@ -12,39 +12,30 @@ public class ClaudeApiChannel : IAgentChannel
 {
     private readonly ILogger<ClaudeApiChannel> _logger;
     private readonly HttpClient _httpClient;
-    private readonly string _model;
-    private readonly int _maxTokens;
+    private readonly ClaudeOptions _options;
 
     public ChannelType Type => ChannelType.ApiDirect;
 
     public ClaudeApiChannel(
         ILogger<ClaudeApiChannel> logger,
-        string apiKey,
-        string model = "claude-sonnet-4-6",
-        int maxTokens = 16384)
+        HttpClient httpClient,
+        IOptions<ClaudeOptions> options)
     {
         _logger = logger;
-        _httpClient = new HttpClient
-        {
-            BaseAddress = new Uri("https://api.anthropic.com")
-        };
-        _httpClient.DefaultRequestHeaders.Authorization =
-            new AuthenticationHeaderValue("Bearer", apiKey);
-        _httpClient.DefaultRequestHeaders.Add("anthropic-version", "2023-06-01");
-        _model = model;
-        _maxTokens = maxTokens;
+        _httpClient = httpClient;
+        _options = options.Value;
     }
 
     public async Task<AgentResponse> SendAsync(AgentRequest request, CancellationToken ct = default)
     {
         try
         {
-            var stepModel = request.Metadata.TryGetValue("model", out var m) ? m : _model;
+            var stepModel = request.Metadata.TryGetValue("model", out var m) ? m : _options.Model;
 
             var body = new ClaudeMessageRequest
             {
                 Model = stepModel,
-                MaxTokens = _maxTokens,
+                MaxTokens = _options.MaxTokens,
                 Messages = [new ClaudeMessage { Role = "user", Content = request.RenderedPrompt }],
             };
 

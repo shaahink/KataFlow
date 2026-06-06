@@ -6,20 +6,26 @@ namespace KataFlow.Adapters.Rest;
 
 public class RestAdapter : IAgentAdapter
 {
-    private readonly IAgentChannel _api;
+    private readonly Dictionary<ChannelType, IAgentChannel> _channels;
 
     public string Name => "Rest";
     public AgentType AgentType => AgentType.Rest;
-    public IReadOnlyList<ChannelType> SupportedChannels => [ChannelType.ApiDirect];
+    public IReadOnlyList<ChannelType> SupportedChannels { get; }
 
-    public RestAdapter(RestApiChannel api)
+    public RestAdapter(IEnumerable<IAgentChannel> channels)
     {
-        _api = api;
+        _channels = channels.ToDictionary(c => c.Type);
+        SupportedChannels = _channels.Keys.ToList().AsReadOnly();
     }
 
     public Task<AgentResponse> SendAsync(
         AgentRequest request,
         ChannelType channel,
         CancellationToken ct = default)
-        => _api.SendAsync(request, ct);
+    {
+        if (_channels.TryGetValue(channel, out var ch))
+            return ch.SendAsync(request, ct);
+        throw new InvalidOperationException(
+            $"Channel '{channel}' is not supported by adapter '{Name}'.");
+    }
 }

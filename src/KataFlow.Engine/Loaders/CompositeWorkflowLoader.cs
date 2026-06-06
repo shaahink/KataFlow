@@ -5,22 +5,23 @@ namespace KataFlow.Engine.Loaders;
 
 public class CompositeWorkflowLoader : IWorkflowLoader
 {
-    private readonly PresetWorkflowRegistry _presets;
-    private readonly YamlWorkflowLoader _yaml;
+    private readonly IReadOnlyList<IWorkflowLoader> _loaders;
 
-    public CompositeWorkflowLoader(PresetWorkflowRegistry presets, YamlWorkflowLoader yaml)
+    public CompositeWorkflowLoader(IEnumerable<IWorkflowLoader> loaders)
     {
-        _presets = presets;
-        _yaml = yaml;
+        _loaders = loaders.ToList().AsReadOnly();
     }
 
     public WorkflowDefinition Load(string nameOrPath)
     {
-        if (_presets.ListAvailable().Contains(nameOrPath))
-            return _presets.Load(nameOrPath);
-        return _yaml.Load(nameOrPath);
+        foreach (var loader in _loaders)
+        {
+            if (loader.ListAvailable().Contains(nameOrPath))
+                return loader.Load(nameOrPath);
+        }
+        return _loaders[^1].Load(nameOrPath);
     }
 
     public IReadOnlyList<string> ListAvailable()
-        => [.. _presets.ListAvailable(), .. _yaml.ListAvailable()];
+        => _loaders.SelectMany(l => l.ListAvailable()).Distinct().ToList().AsReadOnly();
 }

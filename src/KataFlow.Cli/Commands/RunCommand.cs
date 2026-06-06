@@ -5,9 +5,20 @@ using KataFlow.Core.Models;
 
 namespace KataFlow.Cli.Commands;
 
-public static class RunCommand
+public class RunCommand
 {
-    public static Command Create()
+    private readonly IWorkflowRunner _runner;
+    private readonly IWorkflowLoader _loader;
+    private readonly ISessionStore _store;
+
+    public RunCommand(IWorkflowRunner runner, IWorkflowLoader loader, ISessionStore store)
+    {
+        _runner = runner;
+        _loader = loader;
+        _store = store;
+    }
+
+    public Command Create()
     {
         var command = new Command("run", "Run a workflow");
 
@@ -62,9 +73,6 @@ public static class RunCommand
                 return 1;
             }
 
-            var runner = ServiceProviderInstance.GetService<IWorkflowRunner>();
-            var loader = ServiceProviderInstance.GetService<IWorkflowLoader>();
-
             var sessionVars = new Dictionary<string, string>();
 
             foreach (var v in vars)
@@ -89,7 +97,7 @@ public static class RunCommand
 
             if (!string.IsNullOrEmpty(workflow))
             {
-                var def = loader.Load(workflow);
+                var def = _loader.Load(workflow);
                 var ctx = new SessionContext
                 {
                     Mode = mode,
@@ -98,24 +106,24 @@ public static class RunCommand
                 };
 
                 Console.WriteLine($"Running workflow: {def.Name}");
-                if (def.Description is not null) Console.WriteLine(def.Description);
+                if (def.Description is not null)
+                    Console.WriteLine(def.Description);
 
-                var result = await runner.RunAsync(def, ctx);
+                var result = await _runner.RunAsync(def, ctx);
                 Console.WriteLine(result.Success
                     ? $"Session {result.SessionId} completed."
                     : $"Session {result.SessionId} failed: {result.ErrorMessage}");
             }
             else if (!string.IsNullOrEmpty(sessionId))
             {
-                var store = ServiceProviderInstance.GetService<ISessionStore>();
-                var existing = await store.GetAsync(sessionId);
+                var existing = await _store.GetAsync(sessionId);
                 if (existing is null)
                 {
                     Console.Error.WriteLine($"Session not found: {sessionId}");
                     return 1;
                 }
 
-                var def = loader.Load(existing.WorkflowName);
+                var def = _loader.Load(existing.WorkflowName);
                 var ctx = new SessionContext
                 {
                     SessionId = sessionId,
@@ -124,7 +132,7 @@ public static class RunCommand
                     AutoApprove = autoApprove,
                 };
 
-                var result = await runner.RunAsync(def, ctx);
+                var result = await _runner.RunAsync(def, ctx);
                 Console.WriteLine(result.Success
                     ? $"Session {result.SessionId} completed."
                     : $"Session {result.SessionId} failed: {result.ErrorMessage}");
