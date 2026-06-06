@@ -27,6 +27,7 @@
     <ProjectReference Include="..\..\src\KataFlow.Core\KataFlow.Core.csproj" />
     <ProjectReference Include="..\..\src\KataFlow.Engine\KataFlow.Engine.csproj" />
     <ProjectReference Include="..\..\src\KataFlow.Infrastructure\KataFlow.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\KataFlow.Cli\KataFlow.Cli.csproj" />
   </ItemGroup>
 
 </Project>
