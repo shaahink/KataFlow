@@ -37,6 +37,10 @@ public class StepExecutor
         activity?.SetTag(Diagnostics.Tags.AgentType, step.Agent.ToString());
         activity?.SetTag(Diagnostics.Tags.SessionId, session.Id);
 
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeoutCts.CancelAfter(step.Timeout);
+        var linkedCt = timeoutCts.Token;
+
         var attempt = 0;
         while (true)
         {
@@ -63,7 +67,7 @@ public class StepExecutor
                 };
 
                 using var sendActivity = Diagnostics.ActivitySource.StartActivity(Diagnostics.SpanNames.AdapterSend);
-                var response = await adapter.SendAsync(request, channel, ct);
+                var response = await adapter.SendAsync(request, channel, linkedCt);
 
                 if (!response.Success || string.IsNullOrWhiteSpace(response.Content))
                     throw new AgentResponseException(response.ErrorMessage ?? "Empty response");
@@ -91,6 +95,19 @@ public class StepExecutor
                     ArtifactPath = sessionStep.OutputArtifactPath,
                     ArtifactContent = response.Content,
                 };
+            }
+            catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !ct.IsCancellationRequested)
+            {
+                _logger.LogWarning("Step {Step} timed out after {Timeout}", step.Name, step.Timeout);
+                var msg = $"Step timed out after {step.Timeout}";
+                session.History.Add(new SessionStep
+                {
+                    StepName = step.Name,
+                    Status = SessionStatus.Failed,
+                    ErrorMessage = msg,
+                    CompletedAt = DateTimeOffset.UtcNow,
+                });
+                return new StepResult { StepName = step.Name, Success = false, ErrorMessage = msg };
             }
             catch (Exception ex) when (attempt <= step.MaxRetries && ex is not InvalidOperationException)
             {

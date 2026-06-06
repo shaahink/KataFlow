@@ -10,6 +10,7 @@ public interface IFileSystem
     void CreateDirectory(string path);
     string GetCurrentDirectory();
     string[] GetFiles(string directory, string pattern);
+    string[] GetDirectories(string directory);
     Stream OpenRead(string path);
     Stream OpenReadWrite(string path);
     void DeleteFile(string path);

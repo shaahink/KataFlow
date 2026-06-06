@@ -16,6 +16,8 @@ public class SystemFileSystem : IFileSystem
     public string GetCurrentDirectory() => Directory.GetCurrentDirectory();
     public string[] GetFiles(string directory, string pattern)
         => Directory.GetFiles(directory, pattern);
+    public string[] GetDirectories(string directory)
+        => Directory.GetDirectories(directory);
     public Stream OpenRead(string path) => File.OpenRead(path);
     public Stream OpenReadWrite(string path)
         => new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);

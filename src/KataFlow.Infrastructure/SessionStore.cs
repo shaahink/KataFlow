@@ -24,7 +24,7 @@ public class SessionStore : ISessionStore
     {
         var session = new Session
         {
-            Id = Guid.NewGuid().ToString("N")[..12],
+            Id = Guid.NewGuid().ToString("N"),
             WorkflowName = workflowName,
             Mode = mode,
         };
@@ -63,7 +63,7 @@ public class SessionStore : ISessionStore
             return [];
 
         var sessions = new List<Session>();
-        foreach (var dir in _fileSystem.GetFiles(sessionsPath, "*"))
+        foreach (var dir in _fileSystem.GetDirectories(sessionsPath))
         {
             var jsonPath = _fileSystem.Combine(dir, "session.json");
             if (_fileSystem.FileExists(jsonPath))
