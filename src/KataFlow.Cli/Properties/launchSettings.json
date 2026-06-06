@@ -1,0 +1,20 @@
+{
+  "profiles": {
+    "list workflows": {
+      "commandName": "Project",
+      "commandLineArgs": "list workflows"
+    },
+    "list workflows --json": {
+      "commandName": "Project",
+      "commandLineArgs": "list workflows --json"
+    },
+    "list sessions": {
+      "commandName": "Project",
+      "commandLineArgs": "list sessions"
+    },
+    "run software-lifecycle": {
+      "commandName": "Project",
+      "commandLineArgs": "run --workflow software-lifecycle --var project=MyFeature --var goal=test"
+    }
+  }
+}

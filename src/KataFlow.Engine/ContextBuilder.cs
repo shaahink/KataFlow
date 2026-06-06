@@ -6,6 +6,16 @@ namespace KataFlow.Engine;
 
 public class ContextBuilder
 {
+    private static readonly HashSet<string> ExcludedEnvVars = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "ANTHROPIC_API_KEY",
+        "DEEPSEEK_API_KEY",
+        "OPENAI_API_KEY",
+        "KATAFLOW_API_KEY_CLAUDE",
+        "KATAFLOW_API_KEY_DEEPSEEK",
+        "KATAFLOW_API_KEY_OPENAI",
+    };
+
     private readonly IFileSystem _fileSystem;
 
     public ContextBuilder(IFileSystem fileSystem)
@@ -18,7 +28,11 @@ public class ContextBuilder
         var vars = new Dictionary<string, string>();
 
         foreach (var (k, v) in Environment.GetEnvironmentVariables().Cast<DictionaryEntry>())
-            vars[k.ToString()!] = v?.ToString() ?? "";
+        {
+            var key = k.ToString()!;
+            if (!ExcludedEnvVars.Contains(key))
+                vars[key] = v?.ToString() ?? "";
+        }
 
         foreach (var (k, v) in session.Variables)
             vars[k] = v;
