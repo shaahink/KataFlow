@@ -1,4 +1,5 @@
 using System.Text.Json;
+using KataFlow.Core.Abstractions;
 using KataFlow.Core.Enums;
 using KataFlow.Core.Interfaces;
 using KataFlow.Core.Models;
@@ -7,17 +8,16 @@ namespace KataFlow.Infrastructure;
 
 public class SessionStore : ISessionStore
 {
-    private readonly string _sessionsPath;
+    private readonly IFileSystem _fileSystem;
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         WriteIndented = true,
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
     };
 
-    public SessionStore(string sessionsPath = "./sessions")
+    public SessionStore(IFileSystem fileSystem, string sessionsPath = "./sessions")
     {
-        _sessionsPath = Path.GetFullPath(sessionsPath);
-        Directory.CreateDirectory(_sessionsPath);
+        _fileSystem = fileSystem;
     }
 
     public async Task<Session> CreateAsync(string workflowName, OrchestratorMode mode)
@@ -30,8 +30,8 @@ public class SessionStore : ISessionStore
         };
 
         var sessionDir = GetSessionDir(session.Id);
-        Directory.CreateDirectory(sessionDir);
-        Directory.CreateDirectory(Path.Combine(sessionDir, "artifacts"));
+        _fileSystem.CreateDirectory(sessionDir);
+        _fileSystem.CreateDirectory(GetArtifactsDir(session.Id));
 
         await SaveAsync(session);
         return session;
@@ -40,35 +40,35 @@ public class SessionStore : ISessionStore
     public async Task<Session?> GetAsync(string sessionId)
     {
         var path = GetSessionFilePath(sessionId);
-        if (!File.Exists(path))
+        if (!_fileSystem.FileExists(path))
             return null;
 
-        var json = await File.ReadAllTextAsync(path);
+        var json = await _fileSystem.ReadAllTextAsync(path);
         return JsonSerializer.Deserialize<Session>(json, JsonOptions);
     }
 
     public async Task SaveAsync(Session session)
     {
         var path = GetSessionFilePath(session.Id);
-        var dir = Path.GetDirectoryName(path);
-        if (dir is not null) Directory.CreateDirectory(dir);
+        _fileSystem.CreateDirectory(GetSessionDir(session.Id));
 
         var json = JsonSerializer.Serialize(session, JsonOptions);
-        await File.WriteAllTextAsync(path, json);
+        await _fileSystem.WriteAllTextAsync(path, json);
     }
 
     public async Task<IReadOnlyList<Session>> ListAsync()
     {
-        if (!Directory.Exists(_sessionsPath))
+        var sessionsPath = _fileSystem.Combine(_fileSystem.GetCurrentDirectory(), "sessions");
+        if (!_fileSystem.DirectoryExists(sessionsPath))
             return [];
 
         var sessions = new List<Session>();
-        foreach (var dir in Directory.GetDirectories(_sessionsPath))
+        foreach (var dir in _fileSystem.GetFiles(sessionsPath, "*"))
         {
-            var jsonPath = Path.Combine(dir, "session.json");
-            if (File.Exists(jsonPath))
+            var jsonPath = _fileSystem.Combine(dir, "session.json");
+            if (_fileSystem.FileExists(jsonPath))
             {
-                var json = await File.ReadAllTextAsync(jsonPath);
+                var json = await _fileSystem.ReadAllTextAsync(jsonPath);
                 var session = JsonSerializer.Deserialize<Session>(json, JsonOptions);
                 if (session is not null)
                     sessions.Add(session);
@@ -78,8 +78,11 @@ public class SessionStore : ISessionStore
     }
 
     private string GetSessionDir(string sessionId)
-        => Path.Combine(_sessionsPath, sessionId);
+        => _fileSystem.Combine(_fileSystem.GetCurrentDirectory(), "sessions", sessionId);
+
+    private string GetArtifactsDir(string sessionId)
+        => _fileSystem.Combine(GetSessionDir(sessionId), "artifacts");
 
     private string GetSessionFilePath(string sessionId)
-        => Path.Combine(GetSessionDir(sessionId), "session.json");
+        => _fileSystem.Combine(GetSessionDir(sessionId), "session.json");
 }

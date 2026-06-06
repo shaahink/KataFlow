@@ -1,16 +1,24 @@
 using System.Text.RegularExpressions;
+using KataFlow.Core.Abstractions;
 using KataFlow.Core.Interfaces;
 
 namespace KataFlow.Engine;
 
 public partial class PromptRenderer : IPromptRenderer
 {
+    private readonly IFileSystem _fileSystem;
+
+    public PromptRenderer(IFileSystem fileSystem)
+    {
+        _fileSystem = fileSystem;
+    }
+
     public string Render(string templatePath, IReadOnlyDictionary<string, string> variables)
     {
-        if (!File.Exists(templatePath))
+        if (!_fileSystem.FileExists(templatePath))
             throw new FileNotFoundException($"Prompt template not found: {templatePath}", templatePath);
 
-        var template = File.ReadAllText(templatePath);
+        var template = _fileSystem.ReadAllTextAsync(templatePath).GetAwaiter().GetResult();
 
         return VariableRegex().Replace(template, match =>
         {

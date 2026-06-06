@@ -1,9 +1,17 @@
 using System.CommandLine;
+using KataFlow.Core.Abstractions;
 
 namespace KataFlow.Cli.Commands;
 
 public class ApproveCommand
 {
+    private readonly IFileSystem _fileSystem;
+
+    public ApproveCommand(IFileSystem fileSystem)
+    {
+        _fileSystem = fileSystem;
+    }
+
     public Command Create()
     {
         var command = new Command("approve", "Approve or reject a paused session");
@@ -25,25 +33,26 @@ public class ApproveCommand
             var sessionId = parseResult.GetRequiredValue(sessionOption);
             var reject = parseResult.GetValue(rejectOption);
 
-            var sessionsDir = Path.Combine(Directory.GetCurrentDirectory(), "sessions", sessionId);
-            if (!Directory.Exists(sessionsDir))
+            var sessionsDir = _fileSystem.Combine(
+                _fileSystem.GetCurrentDirectory(), "sessions", sessionId);
+            if (!_fileSystem.DirectoryExists(sessionsDir))
             {
                 Console.Error.WriteLine($"Session directory not found: {sessionsDir}");
                 return 1;
             }
 
-            var pendingFile = Path.Combine(sessionsDir, ".pending-approval");
-            if (!File.Exists(pendingFile))
+            var pendingFile = _fileSystem.Combine(sessionsDir, ".pending-approval");
+            if (!_fileSystem.FileExists(pendingFile))
             {
                 Console.Error.WriteLine($"No pending approval for session {sessionId}");
                 return 1;
             }
 
             var decisionFile = reject
-                ? Path.Combine(sessionsDir, ".rejected")
-                : Path.Combine(sessionsDir, ".approved");
+                ? _fileSystem.Combine(sessionsDir, ".rejected")
+                : _fileSystem.Combine(sessionsDir, ".approved");
 
-            File.WriteAllText(decisionFile, sessionId);
+            _fileSystem.WriteAllText(decisionFile, sessionId);
             Console.WriteLine(reject
                 ? $"Session {sessionId} marked for rejection."
                 : $"Session {sessionId} approved.");

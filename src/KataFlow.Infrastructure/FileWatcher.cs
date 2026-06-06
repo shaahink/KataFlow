@@ -1,3 +1,4 @@
+using KataFlow.Core.Abstractions;
 using Microsoft.Extensions.Logging;
 
 namespace KataFlow.Infrastructure;
@@ -5,14 +6,16 @@ namespace KataFlow.Infrastructure;
 public class FileWatcher : IDisposable
 {
     private readonly ILogger<FileWatcher> _logger;
+    private readonly IFileSystem _fileSystem;
     private FileSystemWatcher? _watcher;
-    private readonly TaskCompletionSource<string> _tcs = new();
+    private TaskCompletionSource<string>? _tcs;
     private CancellationTokenRegistration _registration;
     private bool _disposed;
 
-    public FileWatcher(ILogger<FileWatcher> logger)
+    public FileWatcher(ILogger<FileWatcher> logger, IFileSystem fileSystem)
     {
         _logger = logger;
+        _fileSystem = fileSystem;
     }
 
     public async Task<string> WaitForFileAsync(
@@ -22,16 +25,15 @@ public class FileWatcher : IDisposable
         int pollIntervalMs = 500,
         CancellationToken ct = default)
     {
-        Directory.CreateDirectory(watchDirectory);
+        _fileSystem.CreateDirectory(watchDirectory);
 
-        var existingPath = Path.Combine(watchDirectory, fileName);
-        if (File.Exists(existingPath))
-            return await File.ReadAllTextAsync(existingPath, ct);
+        var existingPath = _fileSystem.Combine(watchDirectory, fileName);
+        if (_fileSystem.FileExists(existingPath))
+            return await _fileSystem.ReadAllTextAsync(existingPath, ct);
 
-        _registration = ct.Register(() =>
-        {
-            _tcs.TrySetCanceled(ct);
-        });
+        _tcs = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        _registration = ct.Register(() => _tcs.TrySetCanceled(ct));
 
         _watcher = new FileSystemWatcher(watchDirectory)
         {
@@ -51,25 +53,34 @@ public class FileWatcher : IDisposable
         if (completedTask == _tcs.Task)
         {
             var path = await _tcs.Task;
-            return await File.ReadAllTextAsync(path, ct);
+            CleanupWatcher();
+            return await _fileSystem.ReadAllTextAsync(path, ct);
         }
+
+        CleanupWatcher();
 
         for (var elapsed = 0; elapsed < timeout.TotalMilliseconds; elapsed += pollIntervalMs)
         {
-            if (File.Exists(existingPath))
-                return await File.ReadAllTextAsync(existingPath, ct);
+            if (_fileSystem.FileExists(existingPath))
+                return await _fileSystem.ReadAllTextAsync(existingPath, ct);
             await Task.Delay(pollIntervalMs, ct);
         }
 
         throw new TimeoutException($"Timed out waiting for output file: {existingPath}");
     }
 
+    private void CleanupWatcher()
+    {
+        _watcher?.Dispose();
+        _watcher = null;
+    }
+
     public void Dispose()
     {
         if (_disposed) return;
         _disposed = true;
-        _watcher?.Dispose();
+        CleanupWatcher();
         _registration.Dispose();
-        _tcs.TrySetCanceled();
+        _tcs?.TrySetCanceled();
     }
 }

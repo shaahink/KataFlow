@@ -1,4 +1,5 @@
 using System.CommandLine;
+using KataFlow.Core.Abstractions;
 using KataFlow.Core.Enums;
 using KataFlow.Core.Interfaces;
 using KataFlow.Core.Models;
@@ -10,12 +11,14 @@ public class RunCommand
     private readonly IWorkflowRunner _runner;
     private readonly IWorkflowLoader _loader;
     private readonly ISessionStore _store;
+    private readonly IFileSystem _fileSystem;
 
-    public RunCommand(IWorkflowRunner runner, IWorkflowLoader loader, ISessionStore store)
+    public RunCommand(IWorkflowRunner runner, IWorkflowLoader loader, ISessionStore store, IFileSystem fileSystem)
     {
         _runner = runner;
         _loader = loader;
         _store = store;
+        _fileSystem = fileSystem;
     }
 
     public Command Create()
@@ -85,8 +88,8 @@ public class RunCommand
             foreach (var c in contexts)
             {
                 var parts = c.Split(['='], 2);
-                if (parts.Length == 2 && File.Exists(parts[1]))
-                    sessionVars[parts[0]] = await File.ReadAllTextAsync(parts[1]);
+                if (parts.Length == 2 && _fileSystem.FileExists(parts[1]))
+                    sessionVars[parts[0]] = await _fileSystem.ReadAllTextAsync(parts[1]);
             }
 
             var mode = modeStr?.ToLowerInvariant() switch

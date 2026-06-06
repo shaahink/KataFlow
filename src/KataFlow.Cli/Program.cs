@@ -3,6 +3,7 @@ using KataFlow.Adapters.Claude;
 using KataFlow.Adapters.FileDrop;
 using KataFlow.Adapters.Rest;
 using KataFlow.Cli.Commands;
+using KataFlow.Core.Abstractions;
 using KataFlow.Core.Enums;
 using KataFlow.Core.Interfaces;
 using KataFlow.Engine;
@@ -35,16 +36,18 @@ var app = builder.Build();
 
 var rootCommand = new RootCommand("KataFlow — multi-agent AI workflow orchestrator");
 rootCommand.Add(app.Services.GetRequiredService<RunCommand>().Create());
-rootCommand.Add(new ApproveCommand().Create());
+rootCommand.Add(app.Services.GetRequiredService<ApproveCommand>().Create());
 rootCommand.Add(app.Services.GetRequiredService<StatusCommand>().Create());
 rootCommand.Add(app.Services.GetRequiredService<ListCommand>().Create());
-rootCommand.Add(new WatchCommand().Create());
+rootCommand.Add(app.Services.GetRequiredService<WatchCommand>().Create());
 
 var parseResult = rootCommand.Parse(args);
 return await parseResult.InvokeAsync(parseResult.InvocationConfiguration);
 
 static void ConfigureServices(IServiceCollection services)
 {
+    services.AddSingleton<IFileSystem, SystemFileSystem>();
+
     services.AddSingleton<IPromptRenderer, PromptRenderer>();
     services.AddSingleton<ContextBuilder>();
     services.AddSingleton<StepExecutor>();
@@ -55,23 +58,24 @@ static void ConfigureServices(IServiceCollection services)
     services.AddSingleton<IWorkflowLoader>(sp =>
     {
         var config = sp.GetRequiredService<IConfiguration>();
+        var fs = sp.GetRequiredService<IFileSystem>();
         var loaders = new List<IWorkflowLoader>
         {
             sp.GetRequiredService<PresetWorkflowRegistry>(),
-            new YamlWorkflowLoader(config.GetSection("KataFlow:WorkflowsPath").Value ?? "./workflows"),
+            new YamlWorkflowLoader(fs, config.GetSection("KataFlow:WorkflowsPath").Value ?? "./workflows"),
         };
         return new CompositeWorkflowLoader(loaders);
     });
 
     services.AddSingleton<ISessionStore>(sp =>
     {
-        var config = sp.GetRequiredService<IConfiguration>();
-        return new SessionStore(config.GetSection("KataFlow:SessionsPath").Value ?? "./sessions");
+        var fs = sp.GetRequiredService<IFileSystem>();
+        return new SessionStore(fs);
     });
     services.AddSingleton<IArtifactStore>(sp =>
     {
-        var config = sp.GetRequiredService<IConfiguration>();
-        return new ArtifactStore(config.GetSection("KataFlow:SessionsPath").Value ?? "./sessions");
+        var fs = sp.GetRequiredService<IFileSystem>();
+        return new ArtifactStore(fs);
     });
 
     services.AddSingleton<IApprovalGate, AutoApprovalGate>();
@@ -86,6 +90,7 @@ static void ConfigureServices(IServiceCollection services)
             sp.GetRequiredService<ILogger<FileDropChannel>>(),
             sp.GetRequiredService<FileWatcher>(),
             sp.GetRequiredService<IPromptRenderer>(),
+            sp.GetRequiredService<IFileSystem>(),
             config.GetSection("KataFlow:TemplatesPath").Value ?? "./templates",
             15, 500);
     });
@@ -135,6 +140,8 @@ static void ConfigureServices(IServiceCollection services)
     services.AddSingleton<IWorkflowRunner, WorkflowRunner>();
 
     services.AddTransient<RunCommand>();
+    services.AddTransient<ApproveCommand>();
     services.AddTransient<StatusCommand>();
     services.AddTransient<ListCommand>();
+    services.AddTransient<WatchCommand>();
 }

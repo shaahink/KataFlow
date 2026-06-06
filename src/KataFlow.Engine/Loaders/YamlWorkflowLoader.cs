@@ -1,3 +1,4 @@
+using KataFlow.Core.Abstractions;
 using KataFlow.Core.Enums;
 using KataFlow.Core.Interfaces;
 using KataFlow.Core.Models;
@@ -8,38 +9,40 @@ namespace KataFlow.Engine.Loaders;
 
 public class YamlWorkflowLoader : IWorkflowLoader
 {
+    private readonly IFileSystem _fileSystem;
     private readonly string _workflowsPath;
 
-    public YamlWorkflowLoader(string workflowsPath = "./workflows")
+    public YamlWorkflowLoader(IFileSystem fileSystem, string workflowsPath = "./workflows")
     {
+        _fileSystem = fileSystem;
         _workflowsPath = workflowsPath;
     }
 
     public WorkflowDefinition Load(string nameOrPath)
     {
-        var path = File.Exists(nameOrPath) ? nameOrPath : Path.Combine(_workflowsPath, $"{nameOrPath}.yaml");
+        var path = _fileSystem.FileExists(nameOrPath) ? nameOrPath
+            : _fileSystem.Combine(_workflowsPath, $"{nameOrPath}.yaml");
 
-        if (!File.Exists(path))
+        if (!_fileSystem.FileExists(path))
             throw new FileNotFoundException($"Workflow YAML not found: {path}");
 
-        var yaml = File.ReadAllText(path);
+        var yaml = _fileSystem.ReadAllTextAsync(path).GetAwaiter().GetResult();
         var deserializer = new DeserializerBuilder()
             .WithNamingConvention(UnderscoredNamingConvention.Instance)
             .Build();
 
         var raw = deserializer.Deserialize<YamlWorkflowRoot>(yaml);
-
         return ToWorkflowDefinition(raw.workflow);
     }
 
     public IReadOnlyList<string> ListAvailable()
     {
-        if (!Directory.Exists(_workflowsPath))
+        if (!_fileSystem.DirectoryExists(_workflowsPath))
             return [];
 
-        return Directory.GetFiles(_workflowsPath, "*.yaml")
-            .Concat(Directory.GetFiles(_workflowsPath, "*.yml"))
-            .Select(Path.GetFileNameWithoutExtension)
+        return _fileSystem.GetFiles(_workflowsPath, "*.yaml")
+            .Concat(_fileSystem.GetFiles(_workflowsPath, "*.yml"))
+            .Select(_fileSystem.GetFileNameWithoutExtension)
             .Where(x => x is not null)
             .ToList()!;
     }

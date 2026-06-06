@@ -1,10 +1,18 @@
 using System.Collections;
+using KataFlow.Core.Abstractions;
 using KataFlow.Core.Models;
 
 namespace KataFlow.Engine;
 
 public class ContextBuilder
 {
+    private readonly IFileSystem _fileSystem;
+
+    public ContextBuilder(IFileSystem fileSystem)
+    {
+        _fileSystem = fileSystem;
+    }
+
     public IReadOnlyDictionary<string, string> Build(Session session, StepDefinition step)
     {
         var vars = new Dictionary<string, string>();
@@ -17,7 +25,7 @@ public class ContextBuilder
 
         foreach (var artifactName in step.ContextArtifacts)
             if (session.Artifacts.TryGetValue(artifactName, out var path))
-                vars[artifactName] = File.ReadAllText(path);
+                vars[artifactName] = _fileSystem.ReadAllTextAsync(path).GetAwaiter().GetResult();
 
         vars["_session_id"] = session.Id;
         vars["_step_name"] = step.Name;
@@ -27,9 +35,9 @@ public class ContextBuilder
         return vars;
     }
 
-    private static string GetOutputPath(Session session, StepDefinition step)
+    private string GetOutputPath(Session session, StepDefinition step)
     {
-        var sessionsDir = Path.Combine(Directory.GetCurrentDirectory(), "sessions", session.Id);
-        return Path.Combine(sessionsDir, $"output-{step.Name}.md");
+        var sessionsDir = _fileSystem.Combine(_fileSystem.GetCurrentDirectory(), "sessions", session.Id);
+        return _fileSystem.Combine(sessionsDir, $"output-{step.Name}.md");
     }
 }

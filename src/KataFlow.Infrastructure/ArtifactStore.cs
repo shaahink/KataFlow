@@ -1,3 +1,4 @@
+using KataFlow.Core.Abstractions;
 using KataFlow.Core.Interfaces;
 using KataFlow.Core.Models;
 
@@ -5,31 +6,35 @@ namespace KataFlow.Infrastructure;
 
 public class ArtifactStore : IArtifactStore
 {
-    private readonly string _sessionsPath;
+    private readonly IFileSystem _fileSystem;
+    private readonly string _basePath;
 
-    public ArtifactStore(string sessionsPath = "./sessions")
+    public ArtifactStore(IFileSystem fileSystem, string sessionsPath = "./sessions")
     {
-        _sessionsPath = Path.GetFullPath(sessionsPath);
+        _fileSystem = fileSystem;
+        _basePath = _fileSystem.Combine(_fileSystem.GetCurrentDirectory(), sessionsPath);
     }
 
     public async Task SaveAsync(Session session, string name, string content)
     {
         var path = GetPath(session, name);
-        var dir = Path.GetDirectoryName(path);
-        if (dir is not null) Directory.CreateDirectory(dir);
-        await File.WriteAllTextAsync(path, content);
+        _fileSystem.CreateDirectory(GetArtifactsDir(session.Id));
+        await _fileSystem.WriteAllTextAsync(path, content);
     }
 
-    public Task<string?> ReadAsync(Session session, string name)
+    public async Task<string?> ReadAsync(Session session, string name)
     {
         var path = GetPath(session, name);
-        if (!File.Exists(path))
-            return Task.FromResult<string?>(null);
-        return File.ReadAllTextAsync(path).ContinueWith(t => (string?)t.Result);
+        if (!_fileSystem.FileExists(path))
+            return null;
+        return await _fileSystem.ReadAllTextAsync(path);
     }
 
     public string GetPath(Session session, string name)
     {
-        return Path.Combine(_sessionsPath, session.Id, "artifacts", $"{name}.md");
+        return _fileSystem.Combine(_basePath, session.Id, "artifacts", $"{name}.md");
     }
+
+    private string GetArtifactsDir(string sessionId)
+        => _fileSystem.Combine(_basePath, sessionId, "artifacts");
 }
