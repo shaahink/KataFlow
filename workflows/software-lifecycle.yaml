@@ -1,0 +1,44 @@
+workflow:
+  name: software-lifecycle
+  description: "Plan → implement → review → report cycle for feature development"
+  default_mode: dev
+
+  variables:
+    project: ""
+    output_dir: "./src"
+
+  steps:
+    - name: plan
+      agent: claude
+      role: planner
+      prompt_template: templates/engineering/planner.md
+      approval: manual
+      output_artifact: plan
+      timeout_minutes: 15
+
+    - name: implement
+      agent: rest
+      role: executor
+      prompt_template: templates/engineering/executor.md
+      context_artifacts: [plan]
+      approval: auto
+      output_artifact: implementation
+      timeout_minutes: 30
+
+    - name: review
+      agent: claude
+      role: reviewer
+      prompt_template: templates/engineering/reviewer.md
+      context_artifacts: [plan, implementation]
+      approval: manual
+      output_artifact: review
+      timeout_minutes: 10
+
+    - name: report
+      agent: claude
+      role: reporter
+      prompt_template: templates/engineering/reporter.md
+      context_artifacts: [plan, implementation, review]
+      approval: auto
+      output_artifact: report
+      timeout_minutes: 10

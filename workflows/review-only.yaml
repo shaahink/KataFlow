@@ -1,0 +1,14 @@
+workflow:
+  name: review-only
+  description: "Review an existing artifact (pass via --context implementation=./path)"
+  default_mode: headless
+
+  steps:
+    - name: review
+      agent: claude
+      role: reviewer
+      prompt_template: templates/engineering/reviewer.md
+      context_artifacts: [implementation]
+      approval: manual
+      output_artifact: review
+      timeout_minutes: 10

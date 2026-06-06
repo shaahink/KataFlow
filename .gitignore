@@ -1,0 +1,52 @@
+## .NET
+bin/
+obj/
+*.user
+*.suo
+*.sln.docstates
+*.userprefs
+
+## Build results
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+[Ww][Ii][Nn]32/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+bld/
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+
+## NuGet
+**/[Pp]ackages/*
+!**/[Pp]ackages/build/
+*.nupkg
+**/packages/**
+!**/[Pp]ackages/repositories.config
+
+## IDE
+.vs/
+.vscode/
+.idea/
+*.swp
+*~
+
+## Sessions runtime
+sessions/
+
+## Logs
+logs/
+*.log
+
+## .env (API keys)
+.env
+
+## OS
+Thumbs.db
+.DS_Store
+
+## User config
+~/.kataflow/

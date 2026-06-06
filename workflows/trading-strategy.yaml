@@ -1,0 +1,46 @@
+workflow:
+  name: trading-strategy
+  description: "Generate, test, review, and report on a trading strategy"
+  default_mode: dev
+
+  variables:
+    asset: "BTCUSDT"
+    timeframe: "1h"
+    max_drawdown: "10%"
+    max_leverage: "3x"
+
+  steps:
+    - name: generate-strategy
+      agent: claude
+      role: planner
+      prompt_template: templates/trading/strategy-generator.md
+      approval: manual
+      output_artifact: strategy
+      timeout_minutes: 15
+
+    - name: test-strategy
+      agent: rest
+      role: executor
+      prompt_template: templates/trading/strategy-tester.md
+      context_artifacts: [strategy]
+      approval: auto
+      output_artifact: test-results
+      timeout_minutes: 45
+
+    - name: review-strategy
+      agent: claude
+      role: reviewer
+      prompt_template: templates/trading/strategy-reviewer.md
+      context_artifacts: [strategy, test-results]
+      approval: manual
+      output_artifact: review
+      timeout_minutes: 10
+
+    - name: write-report
+      agent: claude
+      role: reporter
+      prompt_template: templates/trading/reporter.md
+      context_artifacts: [strategy, test-results, review]
+      approval: auto
+      output_artifact: report
+      timeout_minutes: 10

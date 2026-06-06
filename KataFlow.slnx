@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/KataFlow.Adapters/KataFlow.Adapters.csproj" />
+    <Project Path="src/KataFlow.Cli/KataFlow.Cli.csproj" />
+    <Project Path="src/KataFlow.Core/KataFlow.Core.csproj" />
+    <Project Path="src/KataFlow.Engine/KataFlow.Engine.csproj" />
+    <Project Path="src/KataFlow.Infrastructure/KataFlow.Infrastructure.csproj" />
+  </Folder>
+</Solution>
