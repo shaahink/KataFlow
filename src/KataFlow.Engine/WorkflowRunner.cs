@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using KataFlow.Core;
 using KataFlow.Core.Enums;
 using KataFlow.Core.Interfaces;
 using KataFlow.Core.Models;
@@ -32,7 +34,20 @@ public class WorkflowRunner : IWorkflowRunner
         SessionContext ctx,
         CancellationToken ct = default)
     {
+        using var activity = Diagnostics.ActivitySource.StartActivity(Diagnostics.SpanNames.WorkflowRun);
+        activity?.SetTag(Diagnostics.Tags.WorkflowName, workflow.Name);
+
         var session = await _sessionManager.ResolveAsync(workflow, ctx);
+        activity?.SetTag(Diagnostics.Tags.SessionId, session.Id);
+
+        using var _ = _logger.BeginScope(new Dictionary<string, object>
+        {
+            [Diagnostics.Tags.SessionId] = session.Id,
+            [Diagnostics.Tags.WorkflowName] = session.WorkflowName,
+        });
+
+        _logger.LogInformation("Starting workflow {WorkflowName} session {SessionId}",
+            session.WorkflowName, session.Id);
 
         foreach (var step in workflow.Steps.Skip(session.CurrentStepIndex))
         {
@@ -45,10 +60,22 @@ public class WorkflowRunner : IWorkflowRunner
                 continue;
             }
 
+            using var stepScope = _logger.BeginScope(new Dictionary<string, object>
+            {
+                [Diagnostics.Tags.StepName] = step.Name,
+            });
+
+            _logger.LogInformation("Executing step {StepName} ({Role})", step.Name, step.Role);
+
             var stepResult = await _stepExecutor.ExecuteAsync(session, step, _adapterResolver, ct);
 
             if (!stepResult.Success)
+            {
+                _logger.LogError("Step {StepName} failed: {Error}", step.Name, stepResult.ErrorMessage);
                 return await _sessionManager.FailAsync(session, stepResult.ErrorMessage!);
+            }
+
+            _logger.LogInformation("Step {StepName} completed", step.Name);
 
             var gateMode = ctx.AutoApprove ? ApprovalMode.Auto : step.Approval;
             if (!_gates.TryGetValue(gateMode, out var gate))
@@ -60,12 +87,16 @@ public class WorkflowRunner : IWorkflowRunner
             var decision = await gate.RequestApprovalAsync(stepResult, ct);
 
             if (decision == ApprovalDecision.Reject)
+            {
+                _logger.LogInformation("Step {StepName} rejected by operator", step.Name);
                 return await _sessionManager.FailAsync(session, "Rejected by operator");
+            }
 
             session.CurrentStepIndex++;
             await _sessionManager.PersistAsync(session);
         }
 
+        _logger.LogInformation("Workflow {WorkflowName} completed successfully", session.WorkflowName);
         return await _sessionManager.CompleteAsync(session);
     }
 }

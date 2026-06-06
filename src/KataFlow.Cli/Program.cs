@@ -10,39 +10,68 @@ using KataFlow.Engine;
 using KataFlow.Engine.Gates;
 using KataFlow.Engine.Loaders;
 using KataFlow.Infrastructure;
-using KataFlow.Infrastructure.Logging;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using OpenTelemetry;
+using OpenTelemetry.Trace;
 using Serilog;
 
 DotNetEnv.Env.Load();
 
-var builder = Host.CreateApplicationBuilder(args);
+Log.Logger = new LoggerConfiguration()
+    .MinimumLevel.Debug()
+    .Enrich.FromLogContext()
+    .WriteTo.Console(
+        outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}")
+    .WriteTo.File(
+        path: "logs/kataflow-.log",
+        rollingInterval: RollingInterval.Day,
+        outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] {Message:lj}{NewLine}{Exception}")
+    .CreateLogger();
 
-builder.Configuration.AddJsonFile("appsettings.json", optional: true, reloadOnChange: false);
-builder.Configuration.AddJsonFile(
-    Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".kataflow", "config.json"),
-    optional: true,
-    reloadOnChange: false);
+try
+{
+    var builder = Host.CreateApplicationBuilder(args);
 
-ConfigureServices(builder.Services);
+    builder.Configuration.AddJsonFile("appsettings.json", optional: true, reloadOnChange: false);
+    builder.Configuration.AddJsonFile(
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".kataflow", "config.json"),
+        optional: true,
+        reloadOnChange: false);
 
-builder.Logging.ClearProviders();
-builder.Logging.AddSerilog(KataFlowLogger.CreateLogger(), dispose: true);
+    ConfigureServices(builder.Services);
 
-var app = builder.Build();
+    builder.Logging.ClearProviders();
+    builder.Logging.AddSerilog(dispose: true);
 
-var rootCommand = new RootCommand("KataFlow — multi-agent AI workflow orchestrator");
-rootCommand.Add(app.Services.GetRequiredService<RunCommand>().Create());
-rootCommand.Add(app.Services.GetRequiredService<ApproveCommand>().Create());
-rootCommand.Add(app.Services.GetRequiredService<StatusCommand>().Create());
-rootCommand.Add(app.Services.GetRequiredService<ListCommand>().Create());
-rootCommand.Add(app.Services.GetRequiredService<WatchCommand>().Create());
+    builder.Services.AddOpenTelemetry()
+        .WithTracing(tracer => tracer
+            .AddSource("KataFlow")
+            .AddConsoleExporter());
 
-var parseResult = rootCommand.Parse(args);
-return await parseResult.InvokeAsync(parseResult.InvocationConfiguration);
+    var app = builder.Build();
+
+    var rootCommand = new RootCommand("KataFlow — multi-agent AI workflow orchestrator");
+    rootCommand.Add(app.Services.GetRequiredService<RunCommand>().Create());
+    rootCommand.Add(app.Services.GetRequiredService<ApproveCommand>().Create());
+    rootCommand.Add(app.Services.GetRequiredService<StatusCommand>().Create());
+    rootCommand.Add(app.Services.GetRequiredService<ListCommand>().Create());
+    rootCommand.Add(app.Services.GetRequiredService<WatchCommand>().Create());
+
+    var parseResult = rootCommand.Parse(args);
+    return await parseResult.InvokeAsync(parseResult.InvocationConfiguration);
+}
+catch (Exception ex)
+{
+    Log.Fatal(ex, "KataFlow terminated unexpectedly");
+    return 1;
+}
+finally
+{
+    await Log.CloseAndFlushAsync();
+}
 
 static void ConfigureServices(IServiceCollection services)
 {

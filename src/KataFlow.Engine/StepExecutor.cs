@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using KataFlow.Core;
 using KataFlow.Core.Enums;
 using KataFlow.Core.Interfaces;
 using KataFlow.Core.Models;
@@ -30,6 +32,11 @@ public class StepExecutor
         Func<AgentType, IAgentAdapter> adapterResolver,
         CancellationToken ct)
     {
+        using var activity = Diagnostics.ActivitySource.StartActivity(Diagnostics.SpanNames.StepExecute);
+        activity?.SetTag(Diagnostics.Tags.StepName, step.Name);
+        activity?.SetTag(Diagnostics.Tags.AgentType, step.Agent.ToString());
+        activity?.SetTag(Diagnostics.Tags.SessionId, session.Id);
+
         var attempt = 0;
         while (true)
         {
@@ -43,6 +50,8 @@ public class StepExecutor
                 var channel = ResolveChannel(step, session.Mode);
                 ValidateChannel(adapter, channel, step);
 
+                activity?.SetTag(Diagnostics.Tags.ChannelType, channel.ToString());
+
                 var request = new AgentRequest
                 {
                     SessionId = session.Id,
@@ -53,6 +62,7 @@ public class StepExecutor
                         : new(),
                 };
 
+                using var sendActivity = Diagnostics.ActivitySource.StartActivity(Diagnostics.SpanNames.AdapterSend);
                 var response = await adapter.SendAsync(request, channel, ct);
 
                 if (!response.Success || string.IsNullOrWhiteSpace(response.Content))
@@ -82,13 +92,14 @@ public class StepExecutor
                     ArtifactContent = response.Content,
                 };
             }
-            catch (Exception ex) when (attempt <= step.MaxRetries)
+            catch (Exception ex) when (attempt <= step.MaxRetries && ex is not InvalidOperationException)
             {
-                _logger.LogWarning("Step {Step} attempt {Attempt} failed: {Error}. Retrying…",
-                    step.Name, attempt, ex.Message);
+                activity?.SetTag(Diagnostics.Tags.RetryAttempt, attempt);
+                _logger.LogWarning(ex, "Step {Step} attempt {Attempt} failed, retrying", step.Name, attempt);
             }
             catch (Exception ex)
             {
+                _logger.LogError(ex, "Step {Step} failed after {Attempt} attempt(s)", step.Name, attempt);
                 session.History.Add(new SessionStep
                 {
                     StepName = step.Name,
