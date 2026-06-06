@@ -1,4 +1,5 @@
 using System.CommandLine;
+using System.Text.Json;
 using KataFlow.Core.Interfaces;
 using Spectre.Console;
 
@@ -23,11 +24,17 @@ public class ListCommand
         {
             Description = "What to list (workflows|sessions)"
         };
+        var jsonOption = new Option<bool>("--json")
+        {
+            Description = "Output as JSON"
+        };
         command.Add(targetArg);
+        command.Add(jsonOption);
 
         command.SetAction(async (ParseResult parseResult) =>
         {
             var target = parseResult.GetRequiredValue(targetArg);
+            var json = parseResult.GetValue(jsonOption);
 
             switch (target.ToLowerInvariant())
             {
@@ -35,9 +42,19 @@ public class ListCommand
                     var available = _loader.ListAvailable();
                     if (available.Count == 0)
                     {
-                        Console.WriteLine("No workflows available.");
+                        if (json)
+                            Console.WriteLine("[]");
+                        else
+                            Console.WriteLine("No workflows available.");
                         return 0;
                     }
+
+                    if (json)
+                    {
+                        Console.WriteLine(JsonSerializer.Serialize(available, new JsonSerializerOptions { WriteIndented = true }));
+                        return 0;
+                    }
+
                     var table = new Table();
                     table.AddColumn("Name");
                     foreach (var w in available.Order())
@@ -49,9 +66,24 @@ public class ListCommand
                     var sessions = await _store.ListAsync();
                     if (sessions.Count == 0)
                     {
-                        Console.WriteLine("No sessions found.");
+                        if (json)
+                            Console.WriteLine("[]");
+                        else
+                            Console.WriteLine("No sessions found.");
                         return 0;
                     }
+
+                    if (json)
+                    {
+                        Console.WriteLine(JsonSerializer.Serialize(sessions.Select(s => new
+                        {
+                            s.Id,
+                            s.WorkflowName,
+                            Status = s.Status.ToString(),
+                        }), new JsonSerializerOptions { WriteIndented = true, PropertyNamingPolicy = JsonNamingPolicy.CamelCase }));
+                        return 0;
+                    }
+
                     var st = new Table();
                     st.AddColumn("Session ID");
                     st.AddColumn("Workflow");

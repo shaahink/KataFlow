@@ -1,4 +1,5 @@
 using System.CommandLine;
+using System.Text.Json;
 using KataFlow.Core.Interfaces;
 using Spectre.Console;
 
@@ -21,11 +22,17 @@ public class StatusCommand
         {
             Description = "Show status of a specific session"
         };
+        var jsonOption = new Option<bool>("--json")
+        {
+            Description = "Output as JSON"
+        };
         command.Add(sessionOption);
+        command.Add(jsonOption);
 
         command.SetAction(async (ParseResult parseResult) =>
         {
             var sessionId = parseResult.GetValue(sessionOption);
+            var json = parseResult.GetValue(jsonOption);
 
             if (!string.IsNullOrEmpty(sessionId))
             {
@@ -34,6 +41,28 @@ public class StatusCommand
                 {
                     Console.Error.WriteLine($"Session not found: {sessionId}");
                     return 1;
+                }
+
+                if (json)
+                {
+                    Console.WriteLine(JsonSerializer.Serialize(new
+                    {
+                        session.Id,
+                        session.WorkflowName,
+                        Status = session.Status.ToString(),
+                        Mode = session.Mode.ToString(),
+                        session.CurrentStepIndex,
+                        CreatedAt = session.CreatedAt,
+                        CompletedAt = session.CompletedAt,
+                        Steps = session.History.Select(s => new
+                        {
+                            s.StepName,
+                            Status = s.Status.ToString(),
+                            s.OutputArtifactPath,
+                            s.ErrorMessage,
+                        }),
+                    }, new JsonSerializerOptions { WriteIndented = true, PropertyNamingPolicy = JsonNamingPolicy.CamelCase }));
+                    return 0;
                 }
 
                 var panel = new Panel(
@@ -65,7 +94,23 @@ public class StatusCommand
                 var sessions = await _store.ListAsync();
                 if (sessions.Count == 0)
                 {
-                    Console.WriteLine("No sessions found.");
+                    if (json)
+                        Console.WriteLine("[]");
+                    else
+                        Console.WriteLine("No sessions found.");
+                    return 0;
+                }
+
+                if (json)
+                {
+                    Console.WriteLine(JsonSerializer.Serialize(sessions.Select(s => new
+                    {
+                        s.Id,
+                        s.WorkflowName,
+                        Status = s.Status.ToString(),
+                        s.CurrentStepIndex,
+                        CreatedAt = s.CreatedAt,
+                    }), new JsonSerializerOptions { WriteIndented = true, PropertyNamingPolicy = JsonNamingPolicy.CamelCase }));
                     return 0;
                 }
 
