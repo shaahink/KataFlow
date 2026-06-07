@@ -18,5 +18,5 @@ public record StepDefinition
     public StepType Type { get; init; } = StepType.Sequential;
     public IReadOnlyList<string> DependsOn { get; init; } = [];
     public int WorkerCount { get; init; } = 1;
-    public bool UseWorktree { get; init; } = false;
+    public bool UseWorktree { get; init; }
 }

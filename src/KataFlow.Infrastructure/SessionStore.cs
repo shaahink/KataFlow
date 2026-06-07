@@ -9,6 +9,7 @@ namespace KataFlow.Infrastructure;
 public class SessionStore : ISessionStore
 {
     private readonly IFileSystem _fileSystem;
+    private readonly string _basePath;
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         WriteIndented = true,
@@ -18,6 +19,7 @@ public class SessionStore : ISessionStore
     public SessionStore(IFileSystem fileSystem, string sessionsPath = "./sessions")
     {
         _fileSystem = fileSystem;
+        _basePath = _fileSystem.Combine(_fileSystem.GetCurrentDirectory(), sessionsPath);
     }
 
     public async Task<Session> CreateAsync(string workflowName, OrchestratorMode mode)
@@ -58,12 +60,11 @@ public class SessionStore : ISessionStore
 
     public async Task<IReadOnlyList<Session>> ListAsync()
     {
-        var sessionsPath = _fileSystem.Combine(_fileSystem.GetCurrentDirectory(), "sessions");
-        if (!_fileSystem.DirectoryExists(sessionsPath))
+        if (!_fileSystem.DirectoryExists(_basePath))
             return [];
 
         var sessions = new List<Session>();
-        foreach (var dir in _fileSystem.GetDirectories(sessionsPath))
+        foreach (var dir in _fileSystem.GetDirectories(_basePath))
         {
             var jsonPath = _fileSystem.Combine(dir, "session.json");
             if (_fileSystem.FileExists(jsonPath))
@@ -74,11 +75,11 @@ public class SessionStore : ISessionStore
                     sessions.Add(session);
             }
         }
-        return sessions.AsReadOnly();
+        return sessions;
     }
 
     private string GetSessionDir(string sessionId)
-        => _fileSystem.Combine(_fileSystem.GetCurrentDirectory(), "sessions", sessionId);
+        => _fileSystem.Combine(_basePath, sessionId);
 
     private string GetArtifactsDir(string sessionId)
         => _fileSystem.Combine(GetSessionDir(sessionId), "artifacts");

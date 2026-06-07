@@ -4,6 +4,7 @@ using NSubstitute;
 
 namespace KataFlow.Tests;
 
+[Trait("Category", "Unit")]
 public class PromptRendererTests
 {
     [Fact]

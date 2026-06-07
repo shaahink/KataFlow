@@ -47,7 +47,7 @@ public class WorkflowBuilder
         Description = _description,
         DefaultMode = _defaultMode,
         Steps = _steps.AsReadOnly(),
-        Variables = _variables,
+        Variables = new Dictionary<string, string>(_variables),
     };
 
     public class StepBuilder

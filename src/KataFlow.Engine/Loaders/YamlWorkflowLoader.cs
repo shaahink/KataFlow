@@ -117,7 +117,7 @@ public class YamlWorkflowLoader : IWorkflowLoader
                 "headless" => OrchestratorMode.Headless,
                 _ => OrchestratorMode.Dev
             },
-            Steps = yaml.steps.Select(s => s.ToStepDefinition()).ToList().AsReadOnly(),
+            Steps = yaml.steps.Select(s => s.ToStepDefinition()).ToList(),
             Variables = yaml.variables ?? new(),
         };
     }

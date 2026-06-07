@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { startRun, deleteSession, listSessions } from './helpers/api';
-import { cleanupSessions } from './helpers/cleanup';
 
+test.describe.configure({ mode: 'serial' });
 test.describe('Session lifecycle', () => {
   const sessionIds: string[] = [];
 
@@ -35,7 +35,6 @@ test.describe('Session lifecycle', () => {
 
     await page.goto(`/sessions/${res.sessionId}`);
     await expect(page.locator('app-workflow-graph')).toBeVisible({ timeout: 15000 });
-    // The session loads asynchronously; graph should appear regardless of step data
   });
 
   test('approve a session via API', async ({ page }) => {

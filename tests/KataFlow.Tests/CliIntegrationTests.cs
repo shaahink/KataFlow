@@ -4,6 +4,8 @@ using NSubstitute;
 
 namespace KataFlow.Tests;
 
+[Collection("Sequential")]
+[Trait("Category", "Integration")]
 public class CliIntegrationTests
 {
     private static Command BuildRoot()

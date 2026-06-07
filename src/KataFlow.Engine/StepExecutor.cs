@@ -142,4 +142,4 @@ public class StepExecutor
     }
 }
 
-public class AgentResponseException(string message) : Exception(message) { }
+internal class AgentResponseException(string message) : Exception(message) { }

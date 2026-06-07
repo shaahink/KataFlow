@@ -137,7 +137,7 @@ static void MapEndpoints(WebApplication app)
     var workflowsPath = Path.Combine(workspaceRoot, workflowsRel);
     var templatesPath = Path.Combine(workspaceRoot, templatesRel);
 
-    app.MapGet("/api/workflows", () =>
+    app.MapGet("/api/workflows", (ILogger<Program> logger) =>
     {
         var names = loader.ListAvailable();
         var workflows = names.Select(name =>
@@ -147,12 +147,16 @@ static void MapEndpoints(WebApplication app)
                 var def = loader.Load(name);
                 return new { name, description = def.Description };
             }
-            catch { return new { name, description = (string?)null }; }
+            catch (Exception ex)
+            {
+                logger.LogWarning("Failed to load workflow {Name}: {Error}", name, ex.Message);
+                return new { name, description = (string?)null };
+            }
         });
         return Results.Ok(workflows);
     });
 
-    app.MapGet("/api/workflows/{name}", (string name) =>
+    app.MapGet("/api/workflows/{name}", async (string name) =>
     {
         try
         {
@@ -162,7 +166,7 @@ static void MapEndpoints(WebApplication app)
             if (!fs.FileExists(path))
                 return Results.NotFound(new { error = $"Workflow '{name}' not found" });
 
-            var yaml = fs.ReadAllTextAsync(path).GetAwaiter().GetResult();
+            var yaml = await fs.ReadAllTextAsync(path);
             return Results.Ok(new { name, yaml });
         }
         catch (Exception ex)
@@ -222,13 +226,13 @@ static void MapEndpoints(WebApplication app)
         return Results.Ok(files);
     });
 
-    app.MapGet("/api/templates/{**path}", (string path) =>
+    app.MapGet("/api/templates/{**path}", async (string path) =>
     {
         var fullPath = fs.Combine(Directory.GetCurrentDirectory(), path);
         if (!fs.FileExists(fullPath))
             return Results.NotFound(new { error = $"Template '{path}' not found" });
 
-        var content = fs.ReadAllTextAsync(fullPath).GetAwaiter().GetResult();
+        var content = await fs.ReadAllTextAsync(fullPath);
         var variables = Regex.Matches(content, @"\{\{(\w+)\}\}")
             .Select(m => m.Groups[1].Value)
             .Distinct()
@@ -331,7 +335,7 @@ static void MapEndpoints(WebApplication app)
                 session.Variables[k] = v;
             await store.SaveAsync(session);
 
-            _ = Task.Run(async () =>
+            var runTask = Task.Run(async () =>
             {
                 try
                 {
@@ -355,6 +359,13 @@ static void MapEndpoints(WebApplication app)
                     });
                 }
             });
+
+            // Track for logging, fire-and-forget is intentional for async workflow execution
+            _ = runTask.ContinueWith(t =>
+            {
+                if (t.IsFaulted)
+                    Console.Error.WriteLine($"Run task faulted: {t.Exception?.InnerException?.Message}");
+            }, TaskContinuationOptions.OnlyOnFaulted);
 
             return Results.Accepted($"/api/runs/{session.Id}", new { sessionId = session.Id });
         }

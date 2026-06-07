@@ -8,6 +8,7 @@ using NSubstitute;
 
 namespace KataFlow.Tests;
 
+[Trait("Category", "Unit")]
 public class StepExecutorTests
 {
     private static ContextBuilder CreateContextBuilder()

@@ -9,7 +9,7 @@ public class CompositeWorkflowLoader : IWorkflowLoader
 
     public CompositeWorkflowLoader(IEnumerable<IWorkflowLoader> loaders)
     {
-        _loaders = loaders.ToList().AsReadOnly();
+        _loaders = loaders.ToList();
     }
 
     public WorkflowDefinition Load(string nameOrPath)
@@ -23,5 +23,5 @@ public class CompositeWorkflowLoader : IWorkflowLoader
     }
 
     public IReadOnlyList<string> ListAvailable()
-        => _loaders.SelectMany(l => l.ListAvailable()).Distinct().ToList().AsReadOnly();
+        => _loaders.SelectMany(l => l.ListAvailable()).Distinct().ToList();
 }

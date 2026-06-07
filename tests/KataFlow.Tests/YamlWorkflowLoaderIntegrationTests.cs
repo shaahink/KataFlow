@@ -5,6 +5,8 @@ using KataFlow.Infrastructure;
 
 namespace KataFlow.Tests;
 
+[Collection("Sequential")]
+[Trait("Category", "Integration")]
 public class YamlWorkflowLoaderIntegrationTests : IDisposable
 {
     private readonly string _tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));

@@ -99,7 +99,7 @@ public class RestApiChannel : IAgentChannel
         public int MaxTokens { get; set; }
 
         [JsonPropertyName("stream")]
-        public bool Stream { get; set; } = false;
+        public bool Stream { get; set; }
     }
 
     private class ChatMessage

@@ -30,7 +30,7 @@ public class PresetWorkflowRegistry : IWorkflowLoader
     public IReadOnlyList<string> ListAvailable() => [.. _presets.Keys];
 }
 
-public class WorkflowNotFoundException(string name) : Exception($"Workflow not found: {name}")
+internal class WorkflowNotFoundException(string name) : Exception($"Workflow not found: {name}")
 {
     public string WorkflowName { get; } = name;
 }

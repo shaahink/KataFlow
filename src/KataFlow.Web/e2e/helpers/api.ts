@@ -1,6 +1,6 @@
 import { request } from '@playwright/test';
 
-const API = 'http://localhost:5100';
+const API = process.env.API_URL || 'http://localhost:5100';
 
 export async function apiGet(path: string) {
   const ctx = await request.newContext();

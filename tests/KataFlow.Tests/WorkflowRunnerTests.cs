@@ -9,6 +9,7 @@ using NSubstitute;
 
 namespace KataFlow.Tests;
 
+[Trait("Category", "Unit")]
 public class WorkflowRunnerTests
 {
     private static WorkflowRunner CreateRunner(
