@@ -13,33 +13,43 @@ using KataFlow.Infrastructure;
 using Microsoft.AspNetCore.Cors;
 using Microsoft.AspNetCore.SignalR;
 
-var builder = WebApplication.CreateBuilder(args);
+try
+{
+    var builder = WebApplication.CreateBuilder(args);
 
-builder.Configuration.AddJsonFile("appsettings.json", optional: true, reloadOnChange: false);
-builder.Configuration.AddJsonFile(
-    Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".kataflow", "config.json"),
-    optional: true,
-    reloadOnChange: false);
+    builder.Configuration.AddJsonFile("appsettings.json", optional: true, reloadOnChange: false);
+    builder.Configuration.AddJsonFile(
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".kataflow", "config.json"),
+        optional: true,
+        reloadOnChange: false);
 
-ConfigureServices(builder.Services);
+    ConfigureServices(builder.Services);
 
-builder.Services.AddCors(options =>
-    options.AddDefaultPolicy(policy =>
-        policy.WithOrigins("http://localhost:4200")
-            .AllowAnyHeader()
-            .AllowAnyMethod()
-            .AllowCredentials()));
+    builder.Services.AddCors(options =>
+        options.AddDefaultPolicy(policy =>
+            policy.WithOrigins("http://localhost:4200")
+                .AllowAnyHeader()
+                .AllowAnyMethod()
+                .AllowCredentials()));
 
-builder.Services.AddSignalR();
+    builder.Services.AddSignalR();
 
-var app = builder.Build();
-app.UseCors();
-app.UseRouting();
+    var app = builder.Build();
+    app.UseCors();
+    app.UseRouting();
 
-MapEndpoints(app);
-app.MapHub<SessionHub>("/hubs/session");
+    MapEndpoints(app);
+    app.MapHub<SessionHub>("/hubs/session");
 
-app.Run();
+    Console.WriteLine("KataFlow API started");
+    await app.RunAsync();
+}
+catch (Exception ex)
+{
+    Console.Error.WriteLine($"FATAL: {ex.GetType().Name}: {ex.Message}");
+    Console.Error.WriteLine(ex.StackTrace);
+    Environment.Exit(1);
+}
 
 static void ConfigureServices(IServiceCollection services)
 {
@@ -55,9 +65,12 @@ static void ConfigureServices(IServiceCollection services)
     {
         var config = sp.GetRequiredService<Microsoft.Extensions.Configuration.IConfiguration>();
         var fs = sp.GetRequiredService<IFileSystem>();
+        var env = sp.GetRequiredService<IWebHostEnvironment>();
+        var root = ResolveWorkspaceRoot(env);
+        var rel = (config.GetSection("KataFlow:WorkflowsPath").Value ?? "workflows").TrimStart('.', '/', '\\');
         return new CompositeWorkflowLoader([
             sp.GetRequiredService<PresetWorkflowRegistry>(),
-            new YamlWorkflowLoader(fs, config.GetSection("KataFlow:WorkflowsPath").Value ?? "./workflows"),
+            new YamlWorkflowLoader(fs, Path.Combine(root, rel)),
         ]);
     });
 
@@ -117,8 +130,12 @@ static void MapEndpoints(WebApplication app)
     var config = app.Services.GetRequiredService<Microsoft.Extensions.Configuration.IConfiguration>();
     var hubContext = app.Services.GetRequiredService<IHubContext<SessionHub>>();
 
-    var workflowsPath = config.GetSection("KataFlow:WorkflowsPath").Value ?? "./workflows";
-    var templatesPath = config.GetSection("KataFlow:TemplatesPath").Value ?? "./templates";
+    var env = app.Services.GetRequiredService<IWebHostEnvironment>();
+    var workspaceRoot = ResolveWorkspaceRoot(env);
+    var workflowsRel = (config.GetSection("KataFlow:WorkflowsPath").Value ?? "workflows").TrimStart('.', '/', '\\');
+    var templatesRel = (config.GetSection("KataFlow:TemplatesPath").Value ?? "templates").TrimStart('.', '/', '\\');
+    var workflowsPath = Path.Combine(workspaceRoot, workflowsRel);
+    var templatesPath = Path.Combine(workspaceRoot, templatesRel);
 
     app.MapGet("/api/workflows", () =>
     {
@@ -183,6 +200,16 @@ static void MapEndpoints(WebApplication app)
         fs.DeleteFile(path);
         return Results.NoContent();
     });
+
+    app.MapGet("/api/debug/paths", () => Results.Ok(new
+    {
+        cwd = Directory.GetCurrentDirectory(),
+        workspaceRoot,
+        workflowsPath,
+        templatesPath,
+        templatesExist = Directory.Exists(templatesPath),
+        templatesFiles = Directory.Exists(templatesPath) ? Directory.GetFiles(templatesPath, "*.md", SearchOption.AllDirectories).Length : 0,
+    }));
 
     app.MapGet("/api/templates", () =>
     {
@@ -264,6 +291,29 @@ static void MapEndpoints(WebApplication app)
         return Results.Ok(new { sessionId = id, approved = req.Approve });
     });
 
+    app.MapDelete("/api/sessions/{id}", (string id) =>
+    {
+        var sessionDir = fs.Combine(fs.GetCurrentDirectory(), "sessions", id);
+        if (fs.DirectoryExists(sessionDir))
+        {
+            Directory.Delete(sessionDir, recursive: true);
+            return Results.NoContent();
+        }
+        return Results.NotFound(new { error = $"Session '{id}' not found" });
+    });
+
+    app.MapDelete("/api/sessions", () =>
+    {
+        var sessionsDir = fs.Combine(fs.GetCurrentDirectory(), "sessions");
+        if (fs.DirectoryExists(sessionsDir))
+        {
+            foreach (var dir in Directory.GetDirectories(sessionsDir))
+                Directory.Delete(dir, recursive: true);
+            return Results.NoContent();
+        }
+        return Results.NoContent();
+    });
+
     app.MapPost("/api/runs", async (StartRunRequest req) =>
     {
         try
@@ -313,6 +363,19 @@ static void MapEndpoints(WebApplication app)
             return Results.Problem(ex.Message);
         }
     });
+}
+
+static string ResolveWorkspaceRoot(IWebHostEnvironment? env = null)
+{
+    var startDir = env?.ContentRootPath ?? Directory.GetCurrentDirectory();
+    var dir = new DirectoryInfo(startDir);
+    while (dir is not null)
+    {
+        if (dir.GetFiles("KataFlow.slnx").Length > 0 || dir.GetFiles("KataFlow.sln").Length > 0)
+            return dir.FullName;
+        dir = dir.Parent;
+    }
+    return startDir;
 }
 
 public class SessionHub : Hub
