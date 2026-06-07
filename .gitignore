@@ -30,6 +30,7 @@ bld/
 ## IDE
 .vs/
 .vscode/
+*.sln.docstates
 .idea/
 *.swp
 *~

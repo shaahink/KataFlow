@@ -2,6 +2,8 @@
 
 Multi-agent AI workflow orchestrator. Define pipelines of steps; each step is assigned to an agent (Claude, DeepSeek, OpenAI-compatible). The orchestrator handles prompt composition, context injection, agent communication, approval gating, and session state — with a CLI, REST API, and Angular web UI.
 
+📚 **Full documentation:** [docs/README.md](docs/README.md) — architecture, spec, build & test guide.
+
 ## Quick start
 
 ```bash
