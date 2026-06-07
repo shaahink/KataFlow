@@ -1,5 +1,6 @@
 using System.CommandLine;
 using KataFlow.Core.Abstractions;
+using KataFlow.Core;
 
 namespace KataFlow.Cli.Commands;
 
@@ -49,8 +50,8 @@ public class ApproveCommand
             }
 
             var decisionFile = reject
-                ? _fileSystem.Combine(sessionsDir, ".rejected")
-                : _fileSystem.Combine(sessionsDir, ".approved");
+                ? _fileSystem.Combine(sessionsDir, Constants.RejectedFile)
+                : _fileSystem.Combine(sessionsDir, Constants.ApprovedFile);
 
             _fileSystem.WriteAllText(decisionFile, sessionId);
             Console.WriteLine(reject

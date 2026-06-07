@@ -1,6 +1,7 @@
 using System.Collections;
 using KataFlow.Core.Abstractions;
 using KataFlow.Core.Models;
+using KataFlow.Core;
 
 namespace KataFlow.Engine;
 
@@ -8,12 +9,9 @@ public class ContextBuilder
 {
     private static readonly HashSet<string> ExcludedEnvVars = new(StringComparer.OrdinalIgnoreCase)
     {
-        "ANTHROPIC_API_KEY",
-        "DEEPSEEK_API_KEY",
-        "OPENAI_API_KEY",
-        "KATAFLOW_API_KEY_CLAUDE",
-        "KATAFLOW_API_KEY_DEEPSEEK",
-        "KATAFLOW_API_KEY_OPENAI",
+        Constants.ClaudeApiKeyEnv,
+        Constants.DeepSeekApiKeyEnv,
+        Constants.OpenAiApiKeyEnv,
     };
 
     private readonly IFileSystem _fileSystem;

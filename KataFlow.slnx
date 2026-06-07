@@ -7,6 +7,7 @@
     <Project Path="src/KataFlow.Core/KataFlow.Core.csproj" />
     <Project Path="src/KataFlow.Engine/KataFlow.Engine.csproj" />
     <Project Path="src/KataFlow.Infrastructure/KataFlow.Infrastructure.csproj" />
+    <Project Path="src/KataFlow.ServiceDefaults/KataFlow.ServiceDefaults.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/KataFlow.Tests/KataFlow.Tests.csproj" />

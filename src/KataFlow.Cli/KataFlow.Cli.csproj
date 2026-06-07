@@ -4,6 +4,7 @@
     <ProjectReference Include="..\KataFlow.Engine\KataFlow.Engine.csproj" />
     <ProjectReference Include="..\KataFlow.Infrastructure\KataFlow.Infrastructure.csproj" />
     <ProjectReference Include="..\KataFlow.Adapters\KataFlow.Adapters.csproj" />
+    <ProjectReference Include="..\KataFlow.ServiceDefaults\KataFlow.ServiceDefaults.csproj" />
   </ItemGroup>
 
   <ItemGroup>
