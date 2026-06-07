@@ -1,5 +1,6 @@
 ﻿using System.CommandLine;
 using KataFlow.Adapters.Claude;
+using KataFlow.Adapters.CliExecute;
 using KataFlow.Adapters.FileDrop;
 using KataFlow.Adapters.Rest;
 using KataFlow.Cli.Commands;
@@ -123,6 +124,9 @@ static void ConfigureServices(IServiceCollection services)
             config.GetSection("KataFlow:TemplatesPath").Value ?? "./templates",
             15, 500);
     });
+
+    services.AddOptions<CliExecuteOptions>().BindConfiguration("Agents:CliExecute");
+    services.AddSingleton<CliExecuteChannel>();
 
     services.AddOptions<ClaudeOptions>()
         .BindConfiguration("Agents:Claude")
