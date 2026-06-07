@@ -1,0 +1,36 @@
+# Auto-detect and normalize line endings
+* text=auto
+
+# C# files
+*.cs text diff=csharp
+
+# Markdown
+*.md text
+
+# YAML
+*.yaml text
+*.yml text
+
+# JSON
+*.json text
+
+# Shell scripts
+*.bat text eol=crlf
+*.ps1 text
+
+# Node/npm
+*.js text
+*.ts text
+*.html text
+*.scss text
+*.css text
+
+# .NET binary references
+*.dll binary
+*.exe binary
+*.pdb binary
+
+# Images
+*.png binary
+*.ico binary
+*.jpg binary
