@@ -65,9 +65,30 @@ public class WorkflowRunner : IWorkflowRunner
                 [Diagnostics.Tags.StepName] = step.Name,
             });
 
-            _logger.LogInformation("Executing step {StepName} ({Role})", step.Name, step.Role);
+            StepResult stepResult;
 
-            var stepResult = await _stepExecutor.ExecuteAsync(session, step, _adapterResolver, ct);
+            if (session.Status == SessionStatus.WaitingApproval
+                && session.History.Any(h => h.StepName == step.Name && h.Status == SessionStatus.Complete))
+            {
+                _logger.LogInformation("Resuming approval gate for step {StepName}", step.Name);
+                var hist = session.History.Last(h => h.StepName == step.Name);
+                var content = hist.OutputArtifactPath is not null && File.Exists(hist.OutputArtifactPath)
+                    ? await File.ReadAllTextAsync(hist.OutputArtifactPath, ct)
+                    : "";
+                stepResult = new StepResult
+                {
+                    StepName = step.Name, Success = true,
+                    ArtifactPath = hist.OutputArtifactPath,
+                    ArtifactContent = content,
+                };
+                session.Status = SessionStatus.Running;
+                await _sessionManager.PersistAsync(session);
+            }
+            else
+            {
+                _logger.LogInformation("Executing step {StepName} ({Role})", step.Name, step.Role);
+                stepResult = await _stepExecutor.ExecuteAsync(session, step, _adapterResolver, ct);
+            }
 
             if (!stepResult.Success)
             {
@@ -84,6 +105,12 @@ public class WorkflowRunner : IWorkflowRunner
                 return await _sessionManager.FailAsync(session, $"No gate for {gateMode}");
             }
 
+            if (gateMode == ApprovalMode.Manual)
+            {
+                session.Status = SessionStatus.WaitingApproval;
+                await _sessionManager.PersistAsync(session);
+            }
+
             var decision = await gate.RequestApprovalAsync(stepResult, ct);
 
             if (decision == ApprovalDecision.Reject)
@@ -92,6 +119,7 @@ public class WorkflowRunner : IWorkflowRunner
                 return await _sessionManager.FailAsync(session, "Rejected by operator");
             }
 
+            session.Status = SessionStatus.Running;
             session.CurrentStepIndex++;
             await _sessionManager.PersistAsync(session);
         }

@@ -14,15 +14,13 @@ public class WorkflowRunnerTests
 {
     private static WorkflowRunner CreateRunner(
         ISessionStore? store = null,
+        Session? sessionOverride = null,
         StepExecutor? executor = null,
         IEnumerable<IApprovalGate>? gates = null)
     {
-        store ??= CreateStore(new Session { Id = "sess-1", WorkflowName = "test-wf", Mode = OrchestratorMode.Dev });
-        executor ??= Substitute.For<StepExecutor>(
-            Substitute.For<ContextBuilder>(Substitute.For<IFileSystem>()),
-            Substitute.For<IPromptRenderer>(),
-            Substitute.For<IArtifactStore>(),
-            Substitute.For<ILogger<StepExecutor>>());
+        var session = sessionOverride ?? new Session { Id = "sess-1", WorkflowName = "test-wf", Mode = OrchestratorMode.Dev };
+        store ??= CreateStore(session);
+        executor ??= CreateMockExecutor();
         gates ??= [new AutoApprovalGate(Substitute.For<ILogger<AutoApprovalGate>>())];
 
         var sessionManager = new SessionManager(store);
@@ -33,6 +31,22 @@ public class WorkflowRunnerTests
         adapter.SupportedChannels.Returns([ChannelType.ApiDirect, ChannelType.FileDrop]);
 
         return new WorkflowRunner(sessionManager, executor, logger, _ => adapter, gates);
+    }
+
+    private static StepExecutor CreateMockExecutor(bool success = true, string content = "ok")
+    {
+        var executor = Substitute.For<StepExecutor>(
+            Substitute.For<ContextBuilder>(Substitute.For<IFileSystem>()),
+            Substitute.For<IPromptRenderer>(),
+            Substitute.For<IArtifactStore>(),
+            Substitute.For<ILogger<StepExecutor>>());
+        executor.ExecuteAsync(
+                Arg.Any<Session>(),
+                Arg.Any<StepDefinition>(),
+                Arg.Any<Func<AgentType, IAgentAdapter>>(),
+                default)
+            .Returns(new StepResult { StepName = "step1", Success = success, ArtifactContent = content, ErrorMessage = success ? null : "boom" });
+        return executor;
     }
 
     private static ISessionStore CreateStore(Session session)
@@ -52,18 +66,7 @@ public class WorkflowRunnerTests
     [Fact]
     public async Task RunAsync_CompletesFullWorkflow()
     {
-        var executor = Substitute.For<StepExecutor>(
-            Substitute.For<ContextBuilder>(Substitute.For<IFileSystem>()),
-            Substitute.For<IPromptRenderer>(),
-            Substitute.For<IArtifactStore>(),
-            Substitute.For<ILogger<StepExecutor>>());
-        executor.ExecuteAsync(
-                Arg.Any<Session>(),
-                Arg.Any<StepDefinition>(),
-                Arg.Any<Func<AgentType, IAgentAdapter>>(),
-                default)
-            .Returns(new StepResult { StepName = "step1", Success = true, ArtifactContent = "ok" });
-
+        var executor = CreateMockExecutor();
         var runner = CreateRunner(executor: executor);
         var workflow = SimpleWorkflow(new StepDefinition
         {
@@ -78,18 +81,7 @@ public class WorkflowRunnerTests
     [Fact]
     public async Task RunAsync_FailsOnStepFailure()
     {
-        var executor = Substitute.For<StepExecutor>(
-            Substitute.For<ContextBuilder>(Substitute.For<IFileSystem>()),
-            Substitute.For<IPromptRenderer>(),
-            Substitute.For<IArtifactStore>(),
-            Substitute.For<ILogger<StepExecutor>>());
-        executor.ExecuteAsync(
-                Arg.Any<Session>(),
-                Arg.Any<StepDefinition>(),
-                Arg.Any<Func<AgentType, IAgentAdapter>>(),
-                default)
-            .Returns(new StepResult { StepName = "step1", Success = false, ErrorMessage = "boom" });
-
+        var executor = CreateMockExecutor(success: false);
         var runner = CreateRunner(executor: executor);
         var workflow = SimpleWorkflow(new StepDefinition
         {
@@ -105,12 +97,7 @@ public class WorkflowRunnerTests
     [Fact]
     public async Task RunAsync_SkipsParallelSteps()
     {
-        var executor = Substitute.For<StepExecutor>(
-            Substitute.For<ContextBuilder>(Substitute.For<IFileSystem>()),
-            Substitute.For<IPromptRenderer>(),
-            Substitute.For<IArtifactStore>(),
-            Substitute.For<ILogger<StepExecutor>>());
-
+        var executor = CreateMockExecutor();
         var runner = CreateRunner(executor: executor);
         var workflow = SimpleWorkflow(new StepDefinition
         {
@@ -123,5 +110,67 @@ public class WorkflowRunnerTests
         Assert.True(result.Success);
         await executor.DidNotReceiveWithAnyArgs()
             .ExecuteAsync(default!, default!, default!, default);
+    }
+
+    [Fact]
+    public async Task RunAsync_WaitingApproval_SkipsStepReExecution()
+    {
+        var executor = CreateMockExecutor();
+        var session = new Session
+        {
+            Id = "sess-1", WorkflowName = "test-wf", Mode = OrchestratorMode.Dev,
+            Status = SessionStatus.WaitingApproval,
+            CurrentStepIndex = 0,
+        };
+        session.History.Add(new SessionStep
+        {
+            StepName = "step1",
+            Status = SessionStatus.Complete,
+            OutputArtifactPath = null,
+            CompletedAt = DateTimeOffset.UtcNow,
+        });
+
+        var runner = CreateRunner(executor: executor, sessionOverride: session);
+        var workflow = SimpleWorkflow(new StepDefinition
+        {
+            Name = "step1", Agent = AgentType.Rest, Role = "executor",
+            PromptTemplate = "t.md", Approval = ApprovalMode.Manual,
+        });
+
+        var result = await runner.RunAsync(workflow, new SessionContext { AutoApprove = true });
+
+        Assert.True(result.Success);
+        await executor.DidNotReceiveWithAnyArgs()
+            .ExecuteAsync(default!, default!, default!, default);
+    }
+
+    [Fact]
+    public async Task RunAsync_SetsWaitingApproval_BeforeManualGate()
+    {
+        var executor = CreateMockExecutor();
+        var session = new Session { Id = "sess-1", WorkflowName = "test-wf", Mode = OrchestratorMode.Dev };
+        var store = CreateStore(session);
+
+        var manualGate = Substitute.For<IApprovalGate>();
+        manualGate.Mode.Returns(ApprovalMode.Manual);
+        manualGate.RequestApprovalAsync(Arg.Any<StepResult>(), Arg.Any<CancellationToken>())
+            .Returns(async ci =>
+            {
+                var s = await store.GetAsync("sess-1");
+                Assert.Equal(SessionStatus.WaitingApproval, s!.Status);
+                return ApprovalDecision.Approve;
+            });
+
+        var runner = CreateRunner(store: store, sessionOverride: session, executor: executor, gates: [manualGate]);
+        var workflow = SimpleWorkflow(new StepDefinition
+        {
+            Name = "step1", Agent = AgentType.Rest, Role = "executor",
+            PromptTemplate = "t.md", Approval = ApprovalMode.Manual,
+        });
+
+        var result = await runner.RunAsync(workflow, new SessionContext());
+
+        Assert.True(result.Success);
+        await manualGate.Received(1).RequestApprovalAsync(Arg.Any<StepResult>(), Arg.Any<CancellationToken>());
     }
 }
