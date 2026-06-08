@@ -36,83 +36,84 @@ public class CliExecuteChannel : IAgentChannel
             _fileSystem.GetCurrentDirectory(), "sessions", request.SessionId);
         _fileSystem.CreateDirectory(sessionDir);
 
-        var inputFile = _fileSystem.Combine(sessionDir, $"input-{request.StepName}.md");
-        var finalPrompt = request.RenderedPrompt;
+        var finalPrompt = AppendOutputInstructions(request, sessionDir);
 
-        // Append output instructions if available
-        var instructionsPath = _fileSystem.Combine(_templatesPath, "_system", "output-instructions.md");
-        if (_fileSystem.FileExists(instructionsPath))
-        {
-            var outputFile = _fileSystem.Combine(sessionDir, $"output-{request.StepName}.md");
-            var vars = new Dictionary<string, string>(request.Metadata)
-            {
-                ["_output_path"] = outputFile,
-                ["_session_id"] = request.SessionId,
-                ["_step_name"] = request.StepName,
-            };
-            var instructions = string.Join("\n", System.IO.File.ReadLines(instructionsPath));
-            // Simple variable replacement for instructions
-            foreach (var (k, v) in vars)
-                instructions = instructions.Replace($"{{{{{k}}}}}", v);
-            finalPrompt += "\n\n" + instructions;
-        }
-
-        await _fileSystem.WriteAllTextAsync(inputFile, finalPrompt, ct);
-        _logger.LogInformation("Input file written: {Path}", inputFile);
-
-        var args = _options.ArgumentsTemplate
-            .Replace("{input}", inputFile)
-            .Replace("{session}", request.SessionId)
-            .Replace("{step}", request.StepName);
-
-        _logger.LogInformation("Executing: {Command} {Args}", _options.Command, args);
+        _logger.LogInformation("CliExecute: {Command} {Args} (mode={Mode})",
+            _options.Command, _options.Arguments, _options.InputMode);
 
         try
         {
-            var result = await Cli.Wrap(_options.Command)
-                .WithArguments(args)
-                .WithWorkingDirectory(_fileSystem.GetCurrentDirectory())
-                .WithValidation(CommandResultValidation.None)
-                .ExecuteBufferedAsync(ct);
+            BufferedCommandResult result;
 
-            var content = result.StandardOutput;
+            if (_options.InputMode == CliInputMode.Stdin)
+            {
+                result = await Cli.Wrap(_options.Command)
+                    .WithArguments(_options.Arguments)
+                    .WithStandardInputPipe(PipeSource.FromString(finalPrompt))
+                    .WithWorkingDirectory(_fileSystem.GetCurrentDirectory())
+                    .WithValidation(CommandResultValidation.None)
+                    .ExecuteBufferedAsync(ct);
+            }
+            else
+            {
+                var inputFile = _fileSystem.Combine(sessionDir, $"input-{request.StepName}.md");
+                await _fileSystem.WriteAllTextAsync(inputFile, finalPrompt, ct);
+                _logger.LogInformation("Input file written: {Path}", inputFile);
 
-            if (string.IsNullOrWhiteSpace(content))
-                content = result.StandardError;
+                var args = _options.Arguments.Contains("{input}", StringComparison.OrdinalIgnoreCase)
+                    ? _options.Arguments.Replace("{input}", inputFile, StringComparison.OrdinalIgnoreCase)
+                    : $"{_options.Arguments} \"{inputFile}\"";
+
+                result = await Cli.Wrap(_options.Command)
+                    .WithArguments(args)
+                    .WithWorkingDirectory(_fileSystem.GetCurrentDirectory())
+                    .WithValidation(CommandResultValidation.None)
+                    .ExecuteBufferedAsync(ct);
+            }
+
+            var content = string.IsNullOrWhiteSpace(result.StandardOutput)
+                ? result.StandardError
+                : result.StandardOutput;
 
             return new AgentResponse
             {
                 Content = content,
                 Success = result.ExitCode == 0 && !string.IsNullOrWhiteSpace(content),
                 ErrorMessage = result.ExitCode != 0
-                    ? $"Exit code {result.ExitCode}: {result.StandardError}"
+                    ? $"Exit {result.ExitCode}: {result.StandardError}"
                     : null,
-                Metadata = new()
-                {
-                    ["exit_code"] = result.ExitCode.ToString(),
-                    ["command"] = _options.Command,
-                },
+                Metadata = new() { ["exit_code"] = result.ExitCode.ToString(), ["command"] = _options.Command },
             };
         }
         catch (OperationCanceledException)
         {
-            _logger.LogWarning("CLI execution timed out for step {Step}", request.StepName);
-            return new AgentResponse
-            {
-                Content = "",
-                Success = false,
-                ErrorMessage = "CLI execution timed out",
-            };
+            return new AgentResponse { Content = "", Success = false, ErrorMessage = "CLI execution timed out" };
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "CLI execution failed for step {Step}", request.StepName);
-            return new AgentResponse
-            {
-                Content = "",
-                Success = false,
-                ErrorMessage = ex.Message,
-            };
+            return new AgentResponse { Content = "", Success = false, ErrorMessage = ex.Message };
         }
+    }
+
+    private string AppendOutputInstructions(AgentRequest request, string sessionDir)
+    {
+        var instructionsPath = _fileSystem.Combine(_templatesPath, "_system", "output-instructions.md");
+        if (!_fileSystem.FileExists(instructionsPath))
+            return request.RenderedPrompt;
+
+        var outputFile = _fileSystem.Combine(sessionDir, $"output-{request.StepName}.md");
+        var vars = new Dictionary<string, string>(request.Metadata)
+        {
+            ["_output_path"] = outputFile,
+            ["_session_id"] = request.SessionId,
+            ["_step_name"] = request.StepName,
+        };
+
+        var raw = _fileSystem.ReadAllTextAsync(instructionsPath).GetAwaiter().GetResult();
+        foreach (var (k, v) in vars)
+            raw = raw.Replace($"{{{{{k}}}}}", v, StringComparison.OrdinalIgnoreCase);
+
+        return request.RenderedPrompt + "\n\n" + raw;
     }
 }

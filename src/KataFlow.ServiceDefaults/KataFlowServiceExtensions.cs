@@ -95,6 +95,7 @@ public static class KataFlowServiceExtensions
         {
             return new ClaudeAdapter([
                 sp.GetRequiredService<FileDropChannel>(),
+                sp.GetRequiredService<CliExecuteChannel>(),
                 sp.GetRequiredService<ClaudeApiChannel>(),
             ]);
         });
@@ -112,7 +113,11 @@ public static class KataFlowServiceExtensions
         services.AddHttpClient<RestApiChannel>();
         services.AddSingleton<IAgentAdapter>(sp =>
         {
-            return new RestAdapter([sp.GetRequiredService<RestApiChannel>()]);
+            return new RestAdapter([
+                sp.GetRequiredService<FileDropChannel>(),
+                sp.GetRequiredService<CliExecuteChannel>(),
+                sp.GetRequiredService<RestApiChannel>(),
+            ]);
         });
         return services;
     }
