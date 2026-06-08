@@ -26,6 +26,8 @@ try
     var app = builder.Build();
     app.UseCors();
 
+    app.MapGet("/health", () => Results.Ok(new { status = "healthy", timestamp = DateTimeOffset.UtcNow }));
+
     var fs = app.Services.GetRequiredService<IFileSystem>();
     var loader = app.Services.GetRequiredService<IWorkflowLoader>();
     var store = app.Services.GetRequiredService<ISessionStore>();
