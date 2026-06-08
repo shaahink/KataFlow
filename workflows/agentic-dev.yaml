@@ -1,0 +1,65 @@
+workflow:
+  name: agentic-dev
+  description: "Standard agentic programming: plan (Claude) → implement (CLI agent) → build → test → review (Claude) → report"
+  default_mode: dev
+
+  variables:
+    project: ""
+    task: ""
+    codebase: ""
+    constraints: ""
+    build_command: "dotnet build --no-restore 2>&1"
+    test_command: "dotnet test --no-build 2>&1"
+
+  steps:
+    - name: plan
+      agent: claude
+      role: planner
+      prompt_template: templates/agentic/planner.md
+      approval: manual
+      output_artifact: plan
+      timeout_minutes: 15
+
+    - name: implement
+      agent: rest
+      role: executor
+      channel_override: cli_execute
+      prompt_template: templates/agentic/executor.md
+      context_artifacts: [plan]
+      approval: manual
+      output_artifact: implementation
+      timeout_minutes: 60
+
+    - name: build
+      agent: script
+      role: verifier
+      script_command: "{{build_command}}"
+      approval: auto
+      output_artifact: build-output
+      timeout_minutes: 5
+
+    - name: test
+      agent: script
+      role: tester
+      script_command: "{{test_command}}"
+      approval: auto
+      output_artifact: test-results
+      timeout_minutes: 10
+
+    - name: review
+      agent: claude
+      role: reviewer
+      prompt_template: templates/agentic/reviewer.md
+      context_artifacts: [plan, implementation, build-output, test-results]
+      approval: manual
+      output_artifact: review
+      timeout_minutes: 10
+
+    - name: report
+      agent: claude
+      role: reporter
+      prompt_template: templates/agentic/reporter.md
+      context_artifacts: [plan, implementation, test-results, review]
+      approval: auto
+      output_artifact: report
+      timeout_minutes: 10

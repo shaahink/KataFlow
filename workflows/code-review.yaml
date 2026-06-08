@@ -1,0 +1,26 @@
+workflow:
+  name: code-review
+  description: "Review an implementation artifact and produce a structured report"
+  default_mode: headless
+
+  variables:
+    project: ""
+    implementation: ""
+
+  steps:
+    - name: review
+      agent: claude
+      role: reviewer
+      prompt_template: templates/agentic/reviewer.md
+      approval: manual
+      output_artifact: review
+      timeout_minutes: 10
+
+    - name: report
+      agent: claude
+      role: reporter
+      prompt_template: templates/agentic/reporter.md
+      context_artifacts: [review]
+      approval: auto
+      output_artifact: report
+      timeout_minutes: 10

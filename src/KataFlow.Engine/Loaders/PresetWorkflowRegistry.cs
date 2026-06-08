@@ -17,6 +17,9 @@ public class PresetWorkflowRegistry : IWorkflowLoader
             ["review-only"] = ReviewOnlyPreset.Build(),
             ["planner-only"] = PlannerOnlyPreset.Build(),
             ["quick-execute"] = QuickExecutePreset.Build(),
+            ["agentic-dev"] = AgenticDevPreset.Build(),
+            ["bug-fix"] = BugFixPreset.Build(),
+            ["code-review-agentic"] = CodeReviewAgenticPreset.Build(),
         };
     }
 

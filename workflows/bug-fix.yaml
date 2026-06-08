@@ -1,0 +1,47 @@
+workflow:
+  name: bug-fix
+  description: "Diagnose bug (Claude) → fix (CLI agent) → verify (tests) → report"
+  default_mode: dev
+
+  variables:
+    project: ""
+    bug_description: ""
+    error_output: ""
+    codebase: ""
+    test_command: "dotnet test --no-build 2>&1"
+
+  steps:
+    - name: diagnose
+      agent: claude
+      role: planner
+      prompt_template: templates/agentic/diagnoser.md
+      approval: manual
+      output_artifact: diagnosis
+      timeout_minutes: 10
+
+    - name: fix
+      agent: rest
+      role: executor
+      channel_override: cli_execute
+      prompt_template: templates/agentic/fixer.md
+      context_artifacts: [diagnosis]
+      approval: manual
+      output_artifact: fix
+      timeout_minutes: 45
+
+    - name: verify
+      agent: script
+      role: tester
+      script_command: "{{test_command}}"
+      approval: auto
+      output_artifact: test-results
+      timeout_minutes: 10
+
+    - name: report
+      agent: claude
+      role: reporter
+      prompt_template: templates/agentic/reporter.md
+      context_artifacts: [diagnosis, fix, test-results]
+      approval: auto
+      output_artifact: report
+      timeout_minutes: 10
