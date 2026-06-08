@@ -35,6 +35,23 @@ internal static class RunEndpoints
                         {
                             SessionId = session.Id, Mode = ctx.Mode,
                             Variables = ctx.Variables, AutoApprove = ctx.AutoApprove,
+                            OnStepCompleted = stepResult =>
+                            {
+                                _ = hubContext.Clients.Group(session.Id).SendAsync("StepCompleted", new
+                                {
+                                    sessionId = session.Id,
+                                    stepResult.StepName,
+                                    stepResult.Success,
+                                    Budget = stepResult.Budget is not null
+                                        ? new
+                                        {
+                                            stepResult.Budget.CostUsd,
+                                            stepResult.Budget.InputTokens,
+                                            stepResult.Budget.OutputTokens,
+                                        }
+                                        : null,
+                                });
+                            },
                         });
                         await hubContext.Clients.Group(session.Id).SendAsync("SessionCompleted", new
                         {

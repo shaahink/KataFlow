@@ -18,6 +18,16 @@ internal static class SessionEndpoints
             }));
         });
 
+        app.MapGet("/api/sessions/{id}/artifacts/{name}", async (string id, string name, ISessionStore store, IFileSystem fs) =>
+        {
+            var session = await store.GetAsync(id);
+            if (session is null) return Results.NotFound();
+            if (!session.Artifacts.TryGetValue(name, out var path)) return Results.NotFound();
+            if (!fs.FileExists(path)) return Results.NotFound();
+            var content = await fs.ReadAllTextAsync(path);
+            return Results.Ok(new { name, content, path });
+        });
+
         app.MapGet("/api/sessions/{id}", async (string id) =>
         {
             var session = await store.GetAsync(id);

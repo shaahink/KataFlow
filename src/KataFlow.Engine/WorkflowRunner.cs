@@ -98,6 +98,8 @@ public class WorkflowRunner : IWorkflowRunner
 
             _logger.LogInformation("Step {StepName} completed", step.Name);
 
+            ctx.OnStepCompleted?.Invoke(stepResult);
+
             var gateMode = ctx.AutoApprove ? ApprovalMode.Auto : step.Approval;
             if (!_gates.TryGetValue(gateMode, out var gate))
             {

@@ -9,4 +9,5 @@ public record SessionContext
     public Dictionary<string, string> Variables { get; init; } = new();
     public bool AutoApprove { get; init; }
     public decimal? BudgetCapUsd { get; init; }
+    public Action<StepResult>? OnStepCompleted { get; init; }
 }

@@ -151,6 +151,7 @@ public static class KataFlowServiceExtensions
         services.AddKataFlowClaude(config);
         services.AddKataFlowRest(config);
         services.AddKataFlowRunner();
+        services.AddSingleton<IApprovalGate, AutoApprovalGate>();
         return services;
     }
 }
