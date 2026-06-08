@@ -69,33 +69,59 @@ public class ManualApprovalGate : IApprovalGate
         };
         AnsiConsole.Write(panel);
 
-        var choice = AnsiConsole.Prompt(
-            new SelectionPrompt<string>()
-                .Title("Choose action:")
-                .PageSize(5)
-                .AddChoices("Approve and continue", "Reject and stop", "View full artifact"));
-
-        if (choice == "Reject and stop")
-            return Task.FromResult(ApprovalDecision.Reject);
-
-        if (choice == "View full artifact" && result.ArtifactContent is not null)
+        while (true)
         {
-            AnsiConsole.Write(new Panel(result.ArtifactContent)
-            {
-                Header = new PanelHeader(result.StepName),
-                Border = BoxBorder.Heavy,
-            });
+            var choices = new List<string> { "Approve and continue", "Reject and stop", "View full artifact" };
+            if (result.ArtifactPath is not null)
+                choices.Add("Edit artifact then approve");
 
-            var secondChoice = AnsiConsole.Prompt(
+            var choice = AnsiConsole.Prompt(
                 new SelectionPrompt<string>()
                     .Title("Choose action:")
-                    .PageSize(3)
-                    .AddChoices("Approve and continue", "Reject and stop"));
+                    .PageSize(6)
+                    .AddChoices(choices));
 
-            return Task.FromResult(
-                secondChoice == "Reject and stop" ? ApprovalDecision.Reject : ApprovalDecision.Approve);
+            if (choice == "Reject and stop")
+                return Task.FromResult(ApprovalDecision.Reject);
+
+            if (choice == "View full artifact" && result.ArtifactContent is not null)
+            {
+                AnsiConsole.Write(new Panel(result.ArtifactContent)
+                {
+                    Header = new PanelHeader(result.StepName),
+                    Border = BoxBorder.Heavy,
+                });
+                continue;
+            }
+
+            if (choice == "Edit artifact then approve" && result.ArtifactPath is not null)
+            {
+                OpenInEditor(result.ArtifactPath);
+                AnsiConsole.MarkupLine("[green]Artifact saved. Approving.[/]");
+                return Task.FromResult(ApprovalDecision.Approve);
+            }
+
+            return Task.FromResult(ApprovalDecision.Approve);
         }
+    }
 
-        return Task.FromResult(ApprovalDecision.Approve);
+    private static void OpenInEditor(string filePath)
+    {
+        var editor = Environment.GetEnvironmentVariable("EDITOR")
+            ?? (OperatingSystem.IsWindows() ? "notepad" : "nano");
+        try
+        {
+            var p = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = editor,
+                Arguments = $"\"{filePath}\"",
+                UseShellExecute = true,
+            });
+            p?.WaitForExit();
+        }
+        catch (Exception ex)
+        {
+            AnsiConsole.MarkupLine($"[red]Could not open editor '{editor}': {ex.Message}[/]");
+        }
     }
 }
