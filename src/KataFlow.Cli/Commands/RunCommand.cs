@@ -1,8 +1,10 @@
 using System.CommandLine;
+using System.Text.Json;
 using KataFlow.Core.Abstractions;
 using KataFlow.Core.Enums;
 using KataFlow.Core.Interfaces;
 using KataFlow.Core.Models;
+using Spectre.Console;
 
 namespace KataFlow.Cli.Commands;
 
@@ -10,14 +12,12 @@ public class RunCommand
 {
     private readonly IWorkflowRunner _runner;
     private readonly IWorkflowLoader _loader;
-    private readonly ISessionStore _store;
     private readonly IFileSystem _fileSystem;
 
     public RunCommand(IWorkflowRunner runner, IWorkflowLoader loader, ISessionStore store, IFileSystem fileSystem)
     {
         _runner = runner;
         _loader = loader;
-        _store = store;
         _fileSystem = fileSystem;
     }
 
@@ -104,6 +104,8 @@ public class RunCommand
                 _ => OrchestratorMode.Dev
             };
 
+            using var cts = new CancellationTokenSource();
+
             if (!string.IsNullOrEmpty(workflow))
             {
                 var def = _loader.Load(workflow);
@@ -115,23 +117,56 @@ public class RunCommand
                     BudgetCapUsd = budgetCap,
                 };
 
-                Console.WriteLine($"Running workflow: {def.Name}");
-                if (def.Description is not null)
-                    Console.WriteLine(def.Description);
+                SessionResult result = null!;
+                var runTask = _runner.RunAsync(def, ctx, cts.Token);
 
-                var result = await _runner.RunAsync(def, ctx);
+                var runId = def.Name;
+                var sessionFile = FindSessionFile(runId);
+                var started = false;
+
+                await AnsiConsole.Live(CreateStatusTable(def.Name, "Starting..."))
+                    .StartAsync(async liveCtx =>
+                    {
+                        while (!runTask.IsCompleted)
+                        {
+                            if (!started && sessionFile is not null)
+                            {
+                                AnsiConsole.MarkupLine($"[dim]Session ID: [/]{Path.GetFileName(Path.GetDirectoryName(sessionFile)!)}");
+                                AnsiConsole.MarkupLine($"[dim]Watch from another terminal: [/]kataflow watch --session {Path.GetFileName(Path.GetDirectoryName(sessionFile)!)}");
+                                started = true;
+                            }
+
+                            sessionFile ??= FindSessionFile(runId);
+
+                            if (sessionFile is not null && _fileSystem.FileExists(sessionFile))
+                            {
+                                try
+                                {
+                                    var json = await _fileSystem.ReadAllTextAsync(sessionFile);
+                                    var session = JsonSerializer.Deserialize<Session>(json,
+                                        new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                                    if (session is not null)
+                                        liveCtx.UpdateTarget(CreateStatusTable(session));
+                                }
+                                catch { }
+                            }
+                            await Task.Delay(1000);
+                        }
+
+                        result = await runTask;
+                    });
+
                 Console.WriteLine(result.Success
                     ? $"Session {result.SessionId} completed."
                     : $"Session {result.SessionId} failed: {result.ErrorMessage}");
             }
             else if (!string.IsNullOrEmpty(sessionId))
             {
-                var existing = await _store.GetAsync(sessionId);
-                if (existing is null)
-                {
-                    Console.Error.WriteLine($"Session not found: {sessionId}");
-                    return 1;
-                }
+                var existingJson = _fileSystem.ReadAllTextAsync(
+                    _fileSystem.Combine(_fileSystem.GetCurrentDirectory(), "sessions", sessionId, "session.json")).GetAwaiter().GetResult();
+                var existing = JsonSerializer.Deserialize<Session>(existingJson,
+                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+                    ?? throw new InvalidOperationException($"Session not found: {sessionId}");
 
                 var def = _loader.Load(existing.WorkflowName);
                 var ctx = new SessionContext
@@ -143,7 +178,33 @@ public class RunCommand
                     BudgetCapUsd = budgetCap,
                 };
 
-                var result = await _runner.RunAsync(def, ctx);
+                SessionResult result = null!;
+                var runTask = _runner.RunAsync(def, ctx, cts.Token);
+                var sessionFile = _fileSystem.Combine(_fileSystem.GetCurrentDirectory(), "sessions", sessionId, "session.json");
+
+                await AnsiConsole.Live(CreateStatusTable(def.Name, "Resuming..."))
+                    .StartAsync(async liveCtx =>
+                    {
+                        while (!runTask.IsCompleted)
+                        {
+                            if (_fileSystem.FileExists(sessionFile))
+                            {
+                                try
+                                {
+                                    var json = await _fileSystem.ReadAllTextAsync(sessionFile);
+                                    var session = JsonSerializer.Deserialize<Session>(json,
+                                        new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                                    if (session is not null)
+                                        liveCtx.UpdateTarget(CreateStatusTable(session));
+                                }
+                                catch { }
+                            }
+                            await Task.Delay(1000);
+                        }
+
+                        result = await runTask;
+                    });
+
                 Console.WriteLine(result.Success
                     ? $"Session {result.SessionId} completed."
                     : $"Session {result.SessionId} failed: {result.ErrorMessage}");
@@ -153,5 +214,80 @@ public class RunCommand
         });
 
         return command;
+    }
+
+    private string? FindSessionFile(string workflowName)
+    {
+        var sessionsDir = _fileSystem.Combine(_fileSystem.GetCurrentDirectory(), "sessions");
+        if (!_fileSystem.DirectoryExists(sessionsDir))
+            return null;
+
+        var newest = _fileSystem.GetDirectories(sessionsDir)
+            .Select(d => new { Dir = d, File = _fileSystem.Combine(d, "session.json") })
+            .Where(x => _fileSystem.FileExists(x.File))
+            .OrderByDescending(x => new FileInfo(x.File).CreationTimeUtc)
+            .FirstOrDefault();
+
+        if (newest is not null)
+        {
+            var json = _fileSystem.ReadAllTextAsync(newest.File).GetAwaiter().GetResult();
+            try
+            {
+                var s = JsonSerializer.Deserialize<Session>(json,
+                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                if (s?.WorkflowName == workflowName)
+                    return newest.File;
+            }
+            catch { }
+        }
+
+        return null;
+    }
+
+    private static Table CreateStatusTable(Session session)
+    {
+        var table = new Table()
+            .Border(TableBorder.Rounded)
+            .AddColumn(new TableColumn("Step").Centered())
+            .AddColumn(new TableColumn("Status").Centered())
+            .AddColumn(new TableColumn("Tokens").RightAligned())
+            .AddColumn(new TableColumn("Cost").RightAligned());
+
+        foreach (var h in session.History)
+        {
+            var icon = h.Status switch
+            {
+                SessionStatus.Complete => "[green]✓[/]",
+                SessionStatus.Failed => "[red]✗[/]",
+                _ => " ",
+            };
+            table.AddRow(h.StepName, icon, "-", "-");
+        }
+
+        if (session.Budget.Count > 0)
+        {
+            table.AddRow(
+                $"[bold]Total: {session.Status}[/]",
+                $"{session.History.Count} steps",
+                $"{session.TotalInputTokens:N0} in / {session.TotalOutputTokens:N0} out",
+                $"[yellow]${session.TotalCostUsd:F4}[/]");
+        }
+        else
+        {
+            table.AddRow(
+                $"[bold]Total: {session.Status}[/]",
+                $"{session.History.Count} steps",
+                "-",
+                "-");
+        }
+
+        return table;
+    }
+
+    private static Table CreateStatusTable(string workflowName, string status)
+    {
+        return new Table()
+            .Border(TableBorder.Rounded)
+            .AddColumn($"[bold]{workflowName}[/] — {status}");
     }
 }
