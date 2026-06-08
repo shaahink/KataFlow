@@ -40,11 +40,11 @@ public class ManualApprovalGate : IApprovalGate
         if (!string.IsNullOrEmpty(sessionDir))
             _fileSignal.WritePending(sessionDir, result.StepName);
 
-        var decision = await ShowApprovalPrompt(result);
+        var decision = await ShowApprovalPrompt(result, result.Budget);
         return decision;
     }
 
-    private static Task<ApprovalDecision> ShowApprovalPrompt(StepResult result)
+    private static Task<ApprovalDecision> ShowApprovalPrompt(StepResult result, StepBudget? budget = null)
     {
         var previewText = "";
         if (result.ArtifactContent is not null)
@@ -53,11 +53,16 @@ public class ManualApprovalGate : IApprovalGate
             previewText = "\n" + string.Join("\n", lines);
         }
 
+        var budgetLine = budget is not null && budget.CostUsd > 0
+            ? $"\n\n[dim]Step cost: [/][yellow]${budget.CostUsd:F4}[/] [dim]({budget.InputTokens} in / {budget.OutputTokens} out)[/]"
+            : "";
+
         var panel = new Panel(
             Align.Center(new Markup(
                 $"[bold]Step:[/] {result.StepName}\n" +
                 $"[bold]Artifact:[/] {result.ArtifactPath ?? "N/A"}\n\n" +
-                (previewText.Length > 0 ? $"[dim]Preview (first 20 lines):[/]{previewText}" : ""))))
+                (previewText.Length > 0 ? $"[dim]Preview (first 20 lines):[/]{previewText}" : "") +
+                budgetLine)))
         {
             Header = new PanelHeader("Approval Required"),
             Border = BoxBorder.Heavy,

@@ -72,7 +72,8 @@ public class StatusCommand
                     $"[bold]Mode:[/] {session.Mode}\n" +
                     $"[bold]Current Step:[/] {session.CurrentStepIndex}\n" +
                     $"[bold]Created:[/] {session.CreatedAt:O}\n" +
-                    $"[bold]History:[/] {session.History.Count} steps")
+                    $"[bold]History:[/] {session.History.Count} steps\n" +
+                    $"[bold]Budget:[/] ${session.TotalCostUsd:F4} ({session.TotalInputTokens} in / {session.TotalOutputTokens} out)")
                 {
                     Header = new PanelHeader("Session Details"),
                     Border = BoxBorder.Rounded,

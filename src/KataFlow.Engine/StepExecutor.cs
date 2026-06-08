@@ -77,6 +77,24 @@ public class StepExecutor
                 if (!response.Success || string.IsNullOrWhiteSpace(response.Content))
                     throw new AgentResponseException(response.ErrorMessage ?? "Empty response");
 
+                var model = response.Metadata.TryGetValue("model", out var m) ? m : step.Model ?? "";
+                var inTok  = int.TryParse(response.Metadata.TryGetValue("usage_input_tokens",  out var it) ? it : "", out var i) ? i : 0;
+                var outTok = int.TryParse(response.Metadata.TryGetValue("usage_output_tokens", out var ot) ? ot : "", out var o) ? o : 0;
+
+                var budget = new StepBudget
+                {
+                    StepName    = step.Name,
+                    Model       = model,
+                    InputTokens = inTok,
+                    OutputTokens = outTok,
+                    CostUsd     = ModelPricing.Calculate(model, inTok, outTok),
+                };
+                session.Budget.Add(budget);
+
+                if (session.BudgetCapUsd.HasValue && session.TotalCostUsd > session.BudgetCapUsd)
+                    _logger.LogWarning("Budget cap exceeded: ${Total:F4} > ${Cap:F4}",
+                        session.TotalCostUsd, session.BudgetCapUsd);
+
                 if (step.OutputArtifactName is not null)
                 {
                     await _artifactStore.SaveAsync(session, step.OutputArtifactName, response.Content);
@@ -99,6 +117,7 @@ public class StepExecutor
                     Success = true,
                     ArtifactPath = sessionStep.OutputArtifactPath,
                     ArtifactContent = response.Content,
+                    Budget = budget,
                 };
             }
             catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !ct.IsCancellationRequested)

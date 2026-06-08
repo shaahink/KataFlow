@@ -31,3 +31,25 @@ public static class Constants
     public const string ClaudeApiUrl = "https://api.anthropic.com";
     public const string SystemInstructionsFile = "_system/output-instructions.md";
 }
+
+public static class ModelPricing
+{
+    private static readonly Dictionary<string, (decimal InputPer1M, decimal OutputPer1M)> Rates =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["claude-sonnet-4-6"]           = (3.00m,  15.00m),
+            ["claude-haiku-4-5-20251001"]   = (0.80m,   4.00m),
+            ["claude-opus-4-8"]             = (15.00m,  75.00m),
+            ["deepseek-chat"]               = (0.14m,   0.28m),
+            ["deepseek-reasoner"]           = (0.55m,   2.19m),
+            ["gpt-4o"]                      = (2.50m,  10.00m),
+        };
+
+    public static decimal Calculate(string model, int inputTokens, int outputTokens)
+    {
+        if (!Rates.TryGetValue(model, out var rate)) return 0m;
+        return (inputTokens * rate.InputPer1M + outputTokens * rate.OutputPer1M) / 1_000_000m;
+    }
+
+    public static bool IsKnown(string model) => Rates.ContainsKey(model);
+}

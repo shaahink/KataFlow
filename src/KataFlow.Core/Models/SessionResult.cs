@@ -15,4 +15,5 @@ public record StepResult
     public string? ArtifactPath { get; init; }
     public string? ArtifactContent { get; init; }
     public string? ErrorMessage { get; init; }
+    public StepBudget? Budget { get; init; }
 }

@@ -53,6 +53,10 @@ public class RunCommand
             Arity = ArgumentArity.ZeroOrMore,
             AllowMultipleArgumentsPerToken = true
         };
+        var budgetCapOption = new Option<decimal?>("--budget-cap")
+        {
+            Description = "Warn when session cost exceeds this USD amount"
+        };
 
         command.Add(workflowOption);
         command.Add(sessionOption);
@@ -60,6 +64,7 @@ public class RunCommand
         command.Add(autoApproveOption);
         command.Add(varOption);
         command.Add(contextOption);
+        command.Add(budgetCapOption);
 
         command.SetAction(async (ParseResult parseResult) =>
         {
@@ -69,6 +74,7 @@ public class RunCommand
             var autoApprove = parseResult.GetValue(autoApproveOption);
             var vars = parseResult.GetValue(varOption) ?? [];
             var contexts = parseResult.GetValue(contextOption) ?? [];
+            var budgetCap = parseResult.GetValue(budgetCapOption);
 
             if (string.IsNullOrEmpty(workflow) && string.IsNullOrEmpty(sessionId))
             {
@@ -106,6 +112,7 @@ public class RunCommand
                     Mode = mode,
                     Variables = sessionVars,
                     AutoApprove = autoApprove,
+                    BudgetCapUsd = budgetCap,
                 };
 
                 Console.WriteLine($"Running workflow: {def.Name}");
@@ -133,6 +140,7 @@ public class RunCommand
                     Mode = mode,
                     Variables = sessionVars,
                     AutoApprove = autoApprove,
+                    BudgetCapUsd = budgetCap,
                 };
 
                 var result = await _runner.RunAsync(def, ctx);

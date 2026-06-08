@@ -23,6 +23,9 @@ public class SessionManager
         foreach (var (k, v) in ctx.Variables)
             session.Variables[k] = v;
 
+        if (ctx.BudgetCapUsd.HasValue)
+            session.BudgetCapUsd = ctx.BudgetCapUsd;
+
         await PersistAsync(session);
         return session;
     }

@@ -34,7 +34,17 @@ internal static class SessionEndpoints
                 {
                     s.StepName, Status = s.Status.ToString(),
                     s.OutputArtifactPath, s.ErrorMessage, s.StartedAt, s.CompletedAt
-                })
+                }),
+                Budget = new
+                {
+                    TotalCostUsd = session.TotalCostUsd,
+                    TotalInputTokens = session.TotalInputTokens,
+                    TotalOutputTokens = session.TotalOutputTokens,
+                    Steps = session.Budget.Select(b => new
+                    {
+                        b.StepName, b.Model, b.InputTokens, b.OutputTokens, b.CostUsd
+                    }),
+                },
             });
         });
 

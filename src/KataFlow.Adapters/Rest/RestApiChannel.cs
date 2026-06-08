@@ -61,6 +61,8 @@ public class RestApiChannel : IAgentChannel
                 Metadata = new()
                 {
                     ["model"] = result?.Model ?? stepModel,
+                    ["usage_input_tokens"] = result?.Usage?.PromptTokens.ToString() ?? "0",
+                    ["usage_output_tokens"] = result?.Usage?.CompletionTokens.ToString() ?? "0",
                 },
             };
         }
@@ -121,12 +123,24 @@ public class RestApiChannel : IAgentChannel
 
         [JsonPropertyName("choices")]
         public List<Choice>? Choices { get; set; }
+
+        [JsonPropertyName("usage")]
+        public CompletionUsage? Usage { get; set; }
     }
 
     private class Choice
     {
         [JsonPropertyName("message")]
         public ChatMessage? Message { get; set; }
+    }
+
+    private class CompletionUsage
+    {
+        [JsonPropertyName("prompt_tokens")]
+        public int PromptTokens { get; set; }
+
+        [JsonPropertyName("completion_tokens")]
+        public int CompletionTokens { get; set; }
     }
 }
 

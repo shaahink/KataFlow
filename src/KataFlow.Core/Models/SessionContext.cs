@@ -8,4 +8,5 @@ public record SessionContext
     public OrchestratorMode Mode { get; init; } = OrchestratorMode.Dev;
     public Dictionary<string, string> Variables { get; init; } = new();
     public bool AutoApprove { get; init; }
+    public decimal? BudgetCapUsd { get; init; }
 }
