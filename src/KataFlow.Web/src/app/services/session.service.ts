@@ -20,6 +20,11 @@ export class SessionService {
     return this.http.get<SessionDetail>(`/api/sessions/${id}`);
   }
 
+  getArtifact(sessionId: string, artifactName: string): Observable<{ name: string; content: string; path: string }> {
+    return this.http.get<{ name: string; content: string; path: string }>(
+      `/api/sessions/${sessionId}/artifacts/${artifactName}`);
+  }
+
   approve(id: string, approve: boolean): Observable<{ sessionId: string; approved: boolean }> {
     return this.http.post<{ sessionId: string; approved: boolean }>(`/api/sessions/${id}/approve`, { approve });
   }
@@ -35,6 +40,10 @@ export class SessionService {
       .withUrl('/hubs/session')
       .withAutomaticReconnect()
       .build();
+
+    this.hubConnection.on('StepCompleted', (data: any) => {
+      this.zone.run(() => this.stepUpdateSubject.next(data));
+    });
 
     this.hubConnection.on('SessionCompleted', (data: any) => {
       this.zone.run(() => this.stepUpdateSubject.next(data));

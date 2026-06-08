@@ -15,8 +15,9 @@ export interface SessionDetail {
   currentStepIndex: number;
   createdAt: string;
   completedAt: string | null;
-  artifacts: { name: string; path: string }[];
+  artifacts: { name: string; path: string; content?: string }[];
   steps: SessionStep[];
+  budget: BudgetSummary;
 }
 
 export interface SessionStep {
@@ -26,6 +27,21 @@ export interface SessionStep {
   errorMessage: string | null;
   startedAt: string;
   completedAt: string | null;
+}
+
+export interface BudgetSummary {
+  totalCostUsd: number;
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  steps: BudgetStep[];
+}
+
+export interface BudgetStep {
+  stepName: string;
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  costUsd: number;
 }
 
 export interface StartRunRequest {
