@@ -39,6 +39,7 @@ try
     builder.Services.AddTransient<StatusCommand>();
     builder.Services.AddTransient<ListCommand>();
     builder.Services.AddTransient<WatchCommand>();
+    builder.Services.AddTransient<SessionCommand>();
 
     var app = builder.Build();
 
@@ -48,6 +49,7 @@ try
     rootCommand.Add(app.Services.GetRequiredService<StatusCommand>().Create());
     rootCommand.Add(app.Services.GetRequiredService<ListCommand>().Create());
     rootCommand.Add(app.Services.GetRequiredService<WatchCommand>().Create());
+    rootCommand.Add(app.Services.GetRequiredService<SessionCommand>().Create());
 
     var parseResult = rootCommand.Parse(args);
     return await parseResult.InvokeAsync(parseResult.InvocationConfiguration);

@@ -1,5 +1,6 @@
 using System.CommandLine;
 using System.Text.Json;
+using KataFlow.Core.Enums;
 using KataFlow.Core.Interfaces;
 using Spectre.Console;
 
@@ -80,16 +81,50 @@ public class ListCommand
                             s.Id,
                             s.WorkflowName,
                             Status = s.Status.ToString(),
+                            Steps = s.History.Count,
+                            Cost = s.TotalCostUsd,
                         }), new JsonSerializerOptions { WriteIndented = true, PropertyNamingPolicy = JsonNamingPolicy.CamelCase }));
                         return 0;
                     }
 
-                    var st = new Table();
-                    st.AddColumn("Session ID");
-                    st.AddColumn("Workflow");
-                    st.AddColumn("Status");
+                    var st = new Table()
+                        .Border(TableBorder.Rounded);
+                    st.AddColumn(new TableColumn("Session ID").LeftAligned());
+                    st.AddColumn(new TableColumn("Workflow").LeftAligned());
+                    st.AddColumn(new TableColumn("Status").Centered());
+                    st.AddColumn(new TableColumn("Steps").RightAligned());
+                    st.AddColumn(new TableColumn("Cost").RightAligned());
+                    st.AddColumn(new TableColumn("Created").RightAligned());
+
                     foreach (var s in sessions.OrderByDescending(s => s.CreatedAt))
-                        st.AddRow(s.Id, s.WorkflowName, s.Status.ToString());
+                    {
+                        var idShort = s.Id.Length > 8 ? s.Id[..8] : s.Id;
+                        var statusColor = s.Status switch
+                        {
+                            SessionStatus.Running => $"[yellow]{s.Status}[/]",
+                            SessionStatus.WaitingApproval => $"[cyan]{s.Status}[/]",
+                            SessionStatus.Complete => $"[green]{s.Status}[/]",
+                            SessionStatus.Failed => $"[red]{s.Status}[/]",
+                            SessionStatus.Cancelled => $"[dim]{s.Status}[/]",
+                            _ => s.Status.ToString(),
+                        };
+
+                        var cost = s.TotalCostUsd > 0
+                            ? $"[yellow]${s.TotalCostUsd:F4}[/]"
+                            : "-";
+
+                        var duration = s.CompletedAt.HasValue
+                            ? (s.CompletedAt.Value - s.CreatedAt).ToString(@"h\h\ m\m")
+                            : (DateTimeOffset.UtcNow - s.CreatedAt).ToString(@"h\h\ m\m");
+
+                        st.AddRow(
+                            new Markup(idShort),
+                            new Markup(s.WorkflowName),
+                            new Markup(statusColor),
+                            new Markup($"{s.History.Count}/{s.CurrentStepIndex}"),
+                            new Markup(cost),
+                            new Markup(duration));
+                    }
                     AnsiConsole.Write(st);
                     break;
 
