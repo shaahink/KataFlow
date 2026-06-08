@@ -50,3 +50,13 @@ export async function deleteSession(id: string) {
 export async function deleteAllSessions() {
   await apiDelete('/api/sessions');
 }
+
+export async function getSession(id: string) {
+  const { body } = await apiGet(`/api/sessions/${id}`);
+  return body as any;
+}
+
+export async function getArtifact(sessionId: string, name: string) {
+  const { body } = await apiGet(`/api/sessions/${sessionId}/artifacts/${name}`);
+  return body as { name: string; content: string; path: string };
+}

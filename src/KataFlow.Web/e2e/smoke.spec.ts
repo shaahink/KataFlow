@@ -13,7 +13,7 @@ test.describe('API smoke tests', () => {
   test('GET /api/debug/paths shows resolved directories', async () => {
     const { status, body } = await apiGet('/api/debug/paths');
     expect(status).toBe(200);
-    expect(body).toHaveProperty('workspaceRoot');
+    expect(body).toHaveProperty('root');
     expect(body).toHaveProperty('templatesPath');
   });
 
@@ -30,5 +30,24 @@ test.describe('API smoke tests', () => {
     const { status, body } = await apiGet('/api/sessions');
     expect(status).toBe(200);
     expect(Array.isArray(body)).toBe(true);
+  });
+
+  test('GET /api/workflows includes agentic-dev preset', async () => {
+    const { status, body } = await apiGet('/api/workflows');
+    expect(status).toBe(200);
+    expect(body.some((w: any) => w.name === 'agentic-dev')).toBe(true);
+    expect(body.some((w: any) => w.name === 'bug-fix')).toBe(true);
+    expect(body.some((w: any) => w.name === 'code-review-agentic')).toBe(true);
+  });
+
+  test('agentic-dev preset loads with Script build and test steps', async () => {
+    const { status, body } = await apiGet('/api/workflows/agentic-dev');
+    expect(status).toBe(200);
+    expect(body).toHaveProperty('yaml');
+    const yaml = body.yaml as string;
+    expect(yaml).toContain('agent: script');
+    expect(yaml).toContain('script_command');
+    expect(yaml).toContain('build');
+    expect(yaml).toContain('test');
   });
 });
