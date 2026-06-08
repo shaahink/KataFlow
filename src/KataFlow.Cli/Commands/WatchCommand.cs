@@ -1,5 +1,8 @@
 using System.CommandLine;
+using System.Text.Json;
 using KataFlow.Core.Abstractions;
+using KataFlow.Core.Enums;
+using KataFlow.Core.Models;
 
 namespace KataFlow.Cli.Commands;
 
@@ -14,7 +17,7 @@ public class WatchCommand
 
     public Command Create()
     {
-        var command = new Command("watch", "Tail orchestration log for a running session");
+        var command = new Command("watch", "Watch a running session for status updates");
 
         var sessionOption = new Option<string>("--session")
         {
@@ -25,43 +28,66 @@ public class WatchCommand
         command.SetAction(async (ParseResult parseResult, CancellationToken ct) =>
         {
             var sessionId = parseResult.GetRequiredValue(sessionOption);
+            var sessionFile = _fileSystem.Combine(
+                _fileSystem.GetCurrentDirectory(), "sessions", sessionId, "session.json");
 
-            var logDir = _fileSystem.Combine(
-                _fileSystem.GetCurrentDirectory(), "sessions", sessionId);
-            if (!_fileSystem.DirectoryExists(logDir))
+            if (!_fileSystem.FileExists(sessionFile))
             {
-                Console.Error.WriteLine($"Session directory not found: {logDir}");
+                Console.Error.WriteLine($"Session not found: {sessionId}");
                 return 1;
             }
 
-            var logFiles = _fileSystem.GetFiles(logDir, "orchestration-*.log");
-            var logFile = logFiles.FirstOrDefault();
-            if (logFile is null)
-            {
-                Console.WriteLine("No orchestration log file found yet. Waiting...");
-                while (!ct.IsCancellationRequested)
-                {
-                    logFiles = _fileSystem.GetFiles(logDir, "orchestration-*.log");
-                    logFile = logFiles.FirstOrDefault();
-                    if (logFile is not null) break;
-                    await Task.Delay(1000, ct);
-                }
-            }
+            Console.WriteLine($"Watching session: {sessionId}");
+            Console.WriteLine("Press Ctrl+C to stop.\n");
 
-            if (logFile is null) return 0;
-            Console.WriteLine($"Tailing: {logFile}");
-
-            using var fs = _fileSystem.OpenReadWrite(logFile);
-            using var reader = new StreamReader(fs);
-            fs.Seek(0, SeekOrigin.End);
+            var lastStatus = "";
+            var lastStepIndex = -1;
+            var lastBudget = "";
 
             while (!ct.IsCancellationRequested)
             {
-                var line = await reader.ReadLineAsync(ct);
-                if (line is not null)
-                    Console.WriteLine(line);
-                else
-                    await Task.Delay(500, ct);
+                try
+                {
+                    var json = await _fileSystem.ReadAllTextAsync(sessionFile, ct);
+                    var session = JsonSerializer.Deserialize<Session>(json,
+                        new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+                    if (session is null) { await Task.Delay(1000, ct); continue; }
+
+                    var statusLine = $"[{DateTimeOffset.Now:HH:mm:ss}] Status: {session.Status}  Step: {session.CurrentStepIndex}";
+                    var budgetLine = session.TotalCostUsd > 0
+                        ? $"  Cost: ${session.TotalCostUsd:F4}  Tokens: {session.TotalInputTokens}in/{session.TotalOutputTokens}out"
+                        : "";
+
+                    if (session.Status.ToString() != lastStatus
+                        || session.CurrentStepIndex != lastStepIndex
+                        || budgetLine != lastBudget)
+                    {
+                        Console.WriteLine(statusLine + budgetLine);
+
+                        var latest = session.History.LastOrDefault();
+                        if (latest is not null)
+                            Console.WriteLine($"  Last step: {latest.StepName} → {latest.Status}");
+
+                        lastStatus = session.Status.ToString();
+                        lastStepIndex = session.CurrentStepIndex;
+                        lastBudget = budgetLine;
+                    }
+
+                    if (session.Status is SessionStatus.Complete or SessionStatus.Failed or SessionStatus.Cancelled)
+                    {
+                        Console.WriteLine($"\nSession finished: {session.Status}");
+                        if (session.TotalCostUsd > 0)
+                            Console.WriteLine($"Total cost: ${session.TotalCostUsd:F4}");
+                        break;
+                    }
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    // session file may be mid-write; ignore and retry
+                }
+
+                await Task.Delay(1500, ct);
             }
 
             return 0;
