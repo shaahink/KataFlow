@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using CliWrap;
+using CliWrap.Buffered;
 using KataFlow.Core;
 using KataFlow.Core.Enums;
 using KataFlow.Core.Interfaces;
@@ -32,6 +34,9 @@ public class StepExecutor
         Func<AgentType, IAgentAdapter> adapterResolver,
         CancellationToken ct)
     {
+        if (step.Agent == AgentType.Script)
+            return await ExecuteScriptStepAsync(session, step, ct);
+
         using var activity = Diagnostics.ActivitySource.StartActivity(Diagnostics.SpanNames.StepExecute);
         activity?.SetTag(Diagnostics.Tags.StepName, step.Name);
         activity?.SetTag(Diagnostics.Tags.AgentType, step.Agent.ToString());
@@ -139,6 +144,77 @@ public class StepExecutor
         if (!adapter.SupportedChannels.Contains(channel))
             throw new InvalidOperationException(
                 $"Adapter '{adapter.Name}' does not support channel '{channel}' (step: {step.Name}).");
+    }
+
+    private async Task<StepResult> ExecuteScriptStepAsync(
+        Session session, StepDefinition step, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(step.ScriptCommand))
+            throw new InvalidOperationException($"Step '{step.Name}' has Agent=Script but no ScriptCommand.");
+
+        var vars = _contextBuilder.Build(session, step);
+        var command = _promptRenderer.Render(step.ScriptCommand, vars);
+
+        _logger.LogInformation("Script step {Step}: {Command}", step.Name, command);
+
+        var spaceIdx = command.IndexOf(' ');
+        var exe = spaceIdx < 0 ? command : command[..spaceIdx];
+        var argStr = spaceIdx < 0 ? "" : command[(spaceIdx + 1)..];
+
+        try
+        {
+            var result = await Cli.Wrap(exe)
+                .WithArguments(argStr)
+                .WithWorkingDirectory(Environment.CurrentDirectory)
+                .WithValidation(CommandResultValidation.None)
+                .ExecuteBufferedAsync(ct);
+
+            var output = string.IsNullOrWhiteSpace(result.StandardOutput)
+                ? result.StandardError
+                : result.StandardOutput;
+
+            if (!string.IsNullOrWhiteSpace(result.StandardError) && result.ExitCode != 0)
+                output = result.StandardOutput + "\n--- STDERR ---\n" + result.StandardError;
+
+            var success = result.ExitCode == 0;
+
+            if (step.OutputArtifactName is not null)
+            {
+                await _artifactStore.SaveAsync(session, step.OutputArtifactName, output);
+                session.Artifacts[step.OutputArtifactName] = _artifactStore.GetPath(session, step.OutputArtifactName);
+            }
+
+            session.History.Add(new SessionStep
+            {
+                StepName = step.Name,
+                Status = success ? SessionStatus.Complete : SessionStatus.Failed,
+                OutputArtifactPath = step.OutputArtifactName is not null
+                    ? session.Artifacts.GetValueOrDefault(step.OutputArtifactName)
+                    : null,
+                CompletedAt = DateTimeOffset.UtcNow,
+            });
+
+            return new StepResult
+            {
+                StepName = step.Name,
+                Success = success,
+                ArtifactPath = step.OutputArtifactName is not null
+                    ? session.Artifacts.GetValueOrDefault(step.OutputArtifactName)
+                    : null,
+                ArtifactContent = output,
+                ErrorMessage = success ? null : $"Script exited with code {result.ExitCode}",
+            };
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogError(ex, "Script step {Step} failed", step.Name);
+            session.History.Add(new SessionStep
+            {
+                StepName = step.Name, Status = SessionStatus.Failed,
+                ErrorMessage = ex.Message, CompletedAt = DateTimeOffset.UtcNow,
+            });
+            return new StepResult { StepName = step.Name, Success = false, ErrorMessage = ex.Message };
+        }
     }
 }
 

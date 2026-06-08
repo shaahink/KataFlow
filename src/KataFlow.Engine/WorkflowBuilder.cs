@@ -58,6 +58,7 @@ public class WorkflowBuilder
         private string _promptTemplate = "";
         private string? _model;
         private ChannelType? _channelOverride;
+        private string? _scriptCommand;
         private ApprovalMode _approval = ApprovalMode.Manual;
         private readonly List<string> _contextArtifacts = new();
         private string? _outputArtifactName;
@@ -71,6 +72,14 @@ public class WorkflowBuilder
         public StepBuilder WithModel(string model) { _model = model; return this; }
         public StepBuilder ViaFileDrop() { _channelOverride = ChannelType.FileDrop; return this; }
         public StepBuilder ViaApi() { _channelOverride = ChannelType.ApiDirect; return this; }
+        public StepBuilder ViaCliExecute() { _channelOverride = ChannelType.CliExecute; return this; }
+        public StepBuilder AsScript(string command)
+        {
+            _agent = AgentType.Script;
+            _scriptCommand = command;
+            _promptTemplate = "";
+            return this;
+        }
         public StepBuilder RequireApproval() { _approval = ApprovalMode.Manual; return this; }
         public StepBuilder AutoApprove() { _approval = ApprovalMode.Auto; return this; }
         public StepBuilder WithContext(params string[] artifactNames) { _contextArtifacts.AddRange(artifactNames); return this; }
@@ -91,6 +100,7 @@ public class WorkflowBuilder
             OutputArtifactName = _outputArtifactName,
             Timeout = _timeout,
             MaxRetries = _maxRetries,
+            ScriptCommand = _scriptCommand,
         };
     }
 }

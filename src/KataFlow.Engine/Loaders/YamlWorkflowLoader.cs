@@ -67,8 +67,10 @@ public class YamlWorkflowLoader : IWorkflowLoader
         public string agent { get; set; } = "";
         public string role { get; set; } = "";
         public string prompt_template { get; set; } = "";
+        public string? script_command { get; set; }
         public string? model { get; set; }
         public string? channel { get; set; }
+        public string? channel_override { get; set; }
         public string? approval { get; set; }
         public List<string>? context_artifacts { get; set; }
         public string? output_artifact { get; set; }
@@ -82,15 +84,18 @@ public class YamlWorkflowLoader : IWorkflowLoader
             {
                 "claude" => AgentType.Claude,
                 "rest" => AgentType.Rest,
+                "script" => AgentType.Script,
                 _ => throw new InvalidOperationException($"Unknown agent type: {agent}")
             },
             Role = role,
-            PromptTemplate = prompt_template,
+            PromptTemplate = prompt_template ?? "",
+            ScriptCommand = script_command,
             Model = model,
-            ChannelOverride = channel?.ToLowerInvariant() switch
+            ChannelOverride = (channel_override ?? channel)?.ToLowerInvariant() switch
             {
-                "filedrop" => ChannelType.FileDrop,
-                "api" => ChannelType.ApiDirect,
+                "filedrop" or "file_drop" => ChannelType.FileDrop,
+                "api" or "api_direct" or "apidirect" => ChannelType.ApiDirect,
+                "cli_execute" or "cliexecute" => ChannelType.CliExecute,
                 _ => null
             },
             Approval = approval?.ToLowerInvariant() switch

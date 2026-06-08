@@ -127,8 +127,9 @@ public static class KataFlowServiceExtensions
         services.AddSingleton<Func<AgentType, IAgentAdapter>>(sp => agentType => agentType switch
         {
             AgentType.Claude => sp.GetServices<IAgentAdapter>().First(a => a is ClaudeAdapter),
-            AgentType.Rest => sp.GetServices<IAgentAdapter>().First(a => a is RestAdapter),
-            _ => throw new InvalidOperationException($"Unknown agent type: {agentType}")
+            AgentType.Rest   => sp.GetServices<IAgentAdapter>().First(a => a is RestAdapter),
+            AgentType.Script => throw new InvalidOperationException("Script steps do not use an adapter"),
+            _ => throw new InvalidOperationException($"Unknown agent type: {agentType}"),
         });
         services.AddSingleton<IWorkflowRunner, WorkflowRunner>();
         return services;

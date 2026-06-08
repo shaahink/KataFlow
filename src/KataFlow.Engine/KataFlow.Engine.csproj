@@ -5,6 +5,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="CliWrap" Version="3.10.2" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.8" />
     <PackageReference Include="Spectre.Console" Version="0.56.0" />
     <PackageReference Include="YamlDotNet" Version="18.0.0" />

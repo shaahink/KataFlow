@@ -19,4 +19,5 @@ public record StepDefinition
     public IReadOnlyList<string> DependsOn { get; init; } = [];
     public int WorkerCount { get; init; } = 1;
     public bool UseWorktree { get; init; }
+    public string? ScriptCommand { get; init; }
 }
